@@ -1,0 +1,173 @@
+{
+  "dataset": {
+    "id": "croc-demo-2026-07",
+    "name": "Синтетические корпоративные запросы",
+    "source": "demo",
+    "generatedAt": "2026-07-24T16:00:00.000Z",
+    "totalRequests": 1284,
+    "period": {
+      "start": "2026-06-20",
+      "end": "2026-07-24"
+    }
+  },
+  "overview": {
+    "activeScenarios": 18,
+    "unknownRate": 0.037,
+    "problemRate": 0.126,
+    "automationCandidates": 6,
+    "localProcessingRate": 0.918,
+    "tokenReductionFactor": 487
+  },
+  "trend": [
+    { "date": "20 июн", "requests": 192, "problemRate": 0.14 },
+    { "date": "27 июн", "requests": 213, "problemRate": 0.137 },
+    { "date": "04 июл", "requests": 241, "problemRate": 0.131 },
+    { "date": "11 июл", "requests": 286, "problemRate": 0.122 },
+    { "date": "18 июл", "requests": 352, "problemRate": 0.103 }
+  ],
+  "scenarios": [
+    {
+      "id": "scenario-unanswered-pricing-email",
+      "title": "Контроль писем с запросом расчёта",
+      "summary": "Менеджеры просят находить письма с запросами цены, оставшиеся без ответа более двух часов.",
+      "action": "monitor",
+      "domain": "email",
+      "requestCount": 214,
+      "share": 0.167,
+      "growthRate": 0.42,
+      "problemRate": 0.187,
+      "confidence": 0.94,
+      "examples": [
+        "Проверь, остались ли со вчера запросы на расчёт без ответа",
+        "Следи за письмами с запросом цены и сообщай через два часа"
+      ],
+      "signals": ["периодический процесс", "почта → уведомление", "рост 42%"]
+    },
+    {
+      "id": "scenario-tender-report",
+      "title": "Еженедельный отчёт по тендерам",
+      "summary": "Сотрудники собирают выигранные тендеры из CRM и отправляют сводку фокус-группе.",
+      "action": "export",
+      "domain": "crm_sales",
+      "requestCount": 176,
+      "share": 0.137,
+      "growthRate": 0.18,
+      "problemRate": 0.074,
+      "confidence": 0.96,
+      "examples": [
+        "Собери выигранные тендеры за неделю и отправь группе продаж",
+        "Подготовь Excel по победам в тендерах за последние семь дней"
+      ],
+      "signals": ["CRM → Excel", "повторяемый отчёт", "еженедельно"]
+    },
+    {
+      "id": "scenario-calendar-group",
+      "title": "Подбор общего времени встречи",
+      "summary": "Агент ищет пересечение свободных слотов большого числа коллег и доступную переговорную.",
+      "action": "schedule",
+      "domain": "calendar_meetings",
+      "requestCount": 143,
+      "share": 0.111,
+      "growthRate": 0.27,
+      "problemRate": 0.154,
+      "confidence": 0.91,
+      "examples": [
+        "Найди час, когда свободны все участники из списка",
+        "Подбери переговорную на 12 человек после обеда"
+      ],
+      "signals": ["календарь → переговорные", "12 участников", "конфликты слотов"]
+    },
+    {
+      "id": "scenario-project-ticket",
+      "title": "Создание проектных тикетов из почты",
+      "summary": "Письма преобразуются в новые или обновлённые задачи Project и ИСУП.",
+      "action": "create",
+      "domain": "project_systems",
+      "requestCount": 126,
+      "share": 0.098,
+      "growthRate": 0.35,
+      "problemRate": 0.214,
+      "confidence": 0.89,
+      "examples": [
+        "Создай тикет в Project по этому письму",
+        "Обнови задачу ИСУП договорённостями из переписки"
+      ],
+      "signals": ["почта → Project", "ошибки обязательных полей", "рост 35%"]
+    },
+    {
+      "id": "scenario-client-brief",
+      "title": "Сводка по клиенту",
+      "summary": "Агент объединяет CRM, открытые источники и историю сделок в краткий клиентский бриф.",
+      "action": "summarize",
+      "domain": "crm_sales",
+      "requestCount": 119,
+      "share": 0.093,
+      "growthRate": 0.12,
+      "problemRate": 0.092,
+      "confidence": 0.93,
+      "examples": [
+        "Собери краткую справку по компании и её дочерним обществам",
+        "Покажи контакты клиента и выигранные сделки"
+      ],
+      "signals": ["CRM + открытые источники", "несколько источников"]
+    }
+  ],
+  "opportunities": [
+    {
+      "id": "opportunity-pricing-monitor",
+      "rank": 1,
+      "title": "Автоматизировать контроль запросов цены",
+      "recommendation": "Создать постоянный workflow почты с двухчасовым SLA и эскалацией менеджеру.",
+      "recommendationType": "automate",
+      "impactScore": 91,
+      "requestCount": 214,
+      "evidence": [
+        "42% роста за период",
+        "18,7% проблемных запусков",
+        "одинаковое правило повторяется в 73% формулировок"
+      ]
+    },
+    {
+      "id": "opportunity-project-fields",
+      "rank": 2,
+      "title": "Добавить управляемую интеграцию с ИСУП",
+      "recommendation": "Перед созданием тикета проверять обязательные поля и показывать пользователю предварительный просмотр.",
+      "recommendationType": "integrate",
+      "impactScore": 84,
+      "requestCount": 126,
+      "evidence": [
+        "самый высокий problem rate среди растущих сценариев",
+        "61% ошибок связаны с обязательными полями"
+      ]
+    },
+    {
+      "id": "opportunity-calendar-guidance",
+      "rank": 3,
+      "title": "Уточнять ограничения встречи до поиска",
+      "recommendation": "Добавить короткую форму: длительность, обязательные участники, вместимость и диапазон времени.",
+      "recommendationType": "improve_agent",
+      "impactScore": 72,
+      "requestCount": 143,
+      "evidence": [
+        "27% роста",
+        "повторные уточнения длительности и состава участников"
+      ]
+    }
+  ],
+  "workflow": [
+    { "source": "Почта", "target": "Уведомления", "requestCount": 214, "problemRate": 0.187 },
+    { "source": "CRM", "target": "Excel", "requestCount": 176, "problemRate": 0.074 },
+    { "source": "Календарь", "target": "Переговорные", "requestCount": 143, "problemRate": 0.154 },
+    { "source": "Почта", "target": "Project / ИСУП", "requestCount": 126, "problemRate": 0.214 },
+    { "source": "Открытые источники", "target": "CRM", "requestCount": 119, "problemRate": 0.092 }
+  ],
+  "methodology": {
+    "classifier": "Intent Capsule + embedding prototypes",
+    "clusterer": "DBSCAN on normalized vectors",
+    "macroF1": 0.86,
+    "clusterPurity": 0.89,
+    "llmCalls": 23,
+    "llmEveryPromptBaselineCalls": 1284,
+    "elapsedMs": 18420
+  }
+}
