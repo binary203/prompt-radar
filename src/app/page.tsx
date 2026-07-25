@@ -4,6 +4,7 @@ import {
   type ActionTag,
   type BusinessDomain,
 } from "@/lib/contracts/analysis";
+import Link from "next/link";
 
 const analysis = analysisResultSchema.parse(demoAnalysis);
 
@@ -59,6 +60,7 @@ export default function Home() {
           <span className="product-name">PROMPT RADAR</span>
         </a>
         <nav className="top-nav" aria-label="Разделы">
+          <Link href="/checkpoint">Экономика</Link>
           <a href="#scenarios">Сценарии</a>
           <a href="#decisions">Решения</a>
           <a href="#method">Метод</a>
