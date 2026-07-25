@@ -63,6 +63,9 @@ next-env.d.ts
 **/.windsurf/
 **/copilot-instructions.md
 **/.github/instructions/
+/PRODUCT.md
+/DESIGN.md
+/.impeccable/
 
 # organizer source materials and scratch exports
 /checkit/

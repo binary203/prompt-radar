@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import styles from "./page.module.css";
 
@@ -107,7 +107,7 @@ export default function CheckpointPage() {
     return (
       <main className={styles.state}>
         <span>CHECKPOINT / ERROR</span>
-        <h1>Не удалось посчитать демонстрационный прогон.</h1>
+        <h1>Расчёт не завершён</h1>
         <p>{error}</p>
       </main>
     );
@@ -117,8 +117,8 @@ export default function CheckpointPage() {
     return (
       <main className={styles.state}>
         <span>CHECKPOINT / ANALYSIS</span>
-        <h1>Обрабатываем 1 500 событий…</h1>
-        <p>Intent extraction → classification → economics</p>
+        <h1>Собираем картину ценности</h1>
+        <p>Intent → scenario → outcome → economics</p>
       </main>
     );
   }
@@ -131,212 +131,294 @@ export default function CheckpointPage() {
         platform.requests /
         (web.totalTokens / web.requests)
       : 0;
+  const outcomeYield =
+    data.economics.realizedValueRub.base /
+    data.economics.potentialValueRub.base;
+  const netValue =
+    data.economics.realizedValueRub.base - data.economics.tcoRub.total;
+  const costPerSuccess =
+    data.usage.successes > 0
+      ? data.economics.tcoRub.total / data.usage.successes
+      : 0;
 
   return (
     <main className={styles.shell}>
       <header className={styles.rail}>
-        <Link href="/">PR//01 · PROMPT RADAR</Link>
-        <span>CHECKPOINT / SYNTHETIC RUN</span>
-        <span>60 DAYS · {formatInteger(data.dataset.events)} EVENTS</span>
+        <Link className={styles.wordmark} href="/">
+          PROMPT RADAR
+        </Link>
+        <div className={styles.railStatus}>
+          <span className={styles.liveDot} aria-hidden="true" />
+          SYNTHETIC RUN
+        </div>
+        <span className={styles.railMeta}>
+          {data.dataset.periodDays} DAYS / {formatInteger(data.dataset.events)}{" "}
+          EVENTS
+        </span>
       </header>
 
-      <section className={styles.briefing}>
-        <div>
-          <p className={styles.eyebrow}>Главный ответ CTO</p>
+      <section className={styles.opening}>
+        <div className={styles.openingCopy}>
+          <p className={styles.kicker}>Executive checkpoint</p>
           <h1>
-            Один рубль затрат
+            Токены показывают расходы.
             <br />
-            возвращает{" "}
-            <em>{formatRatio(data.economics.returnPerRuble.base)} ₽</em>
+            <span>Outcome показывает ценность.</span>
           </h1>
           <p className={styles.lead}>
-            Не считаем tool calls пользой. Связываем выполненный бизнес-сценарий
-            с ручным временем, outcome и полной стоимостью владения.
+            Prompt Radar извлекает намерение из OpenAI-compatible payload,
+            связывает его с бизнес-сценарием и проверяет результат по traces,
+            повторам и feedback.
           </p>
         </div>
-        <div className={styles.verdict}>
-          <span>BASE CASE</span>
-          <strong>{formatSignedPercent(data.economics.roi.base)}</strong>
-          <p>ROI при открытых настраиваемых допущениях</p>
-        </div>
-      </section>
-
-      <section className={styles.valueFlow} aria-label="Воронка ценности">
-        <FlowStep
-          index="01"
-          label="Potential Value"
-          value={formatRubles(data.economics.potentialValueRub.base)}
-          note="если все задачи завершены"
-        />
-        <span className={styles.flowArrow}>→</span>
-        <FlowStep
-          index="02"
-          label="Realized Value"
-          value={formatRubles(data.economics.realizedValueRub.base)}
-          note={`${formatPercent(data.usage.successRate)} успешных outcome`}
-          accent
-        />
-        <span className={styles.flowArrow}>−</span>
-        <FlowStep
-          index="03"
-          label="TCO"
-          value={formatRubles(data.economics.tcoRub.total)}
-          note="инференс + команда + инфраструктура"
-        />
-      </section>
-
-      <section className={styles.metricStrip}>
-        <Metric label="MAU" value={Math.round(data.dataset.mau).toString()} />
-        <Metric label="Tool calls" value={formatInteger(data.usage.toolCalls)} />
-        <Metric label="Tokens" value={formatCompact(data.usage.tokens)} />
-        <Metric
-          label="FTE-months"
-          value={data.economics.fteMonthsRealized.base.toFixed(2)}
-        />
-        <Metric
-          label="Value Gap"
-          value={formatRubles(data.economics.valueGapRub.base)}
-          warning
-        />
-      </section>
-
-      <section className={styles.split}>
-        <article className={styles.bandPanel}>
-          <header>
-            <p className={styles.eyebrow}>Sensitivity</p>
-            <h2>Честный диапазон вместо одной «магической» цифры</h2>
-          </header>
-          <div className={styles.bandTable}>
-            <div className={styles.bandHeader}>
-              <span>Сценарий</span>
-              <span>Realized</span>
-              <span>ROI</span>
-              <span>₽ / 1 ₽</span>
+        <div className={styles.baseVerdict}>
+          <span>BASE / PROXY MODEL</span>
+          <strong>
+            {formatRatio(data.economics.returnPerRuble.base)}
+            <small> ₽</small>
+          </strong>
+          <p>реализованной ценности на 1 ₽ полной стоимости</p>
+          <dl>
+            <div>
+              <dt>ROI</dt>
+              <dd>{formatSignedPercent(data.economics.roi.base)}</dd>
             </div>
-            {bands.map((band) => (
-              <div
-                className={band === "base" ? styles.baseBand : undefined}
-                key={band}
-              >
-                <strong>{band.toUpperCase()}</strong>
-                <span>{formatRubles(data.economics.realizedValueRub[band])}</span>
-                <span>{formatSignedPercent(data.economics.roi[band])}</span>
-                <span>{formatRatio(data.economics.returnPerRuble[band])}</span>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className={styles.agentPanel}>
-          <header>
-            <p className={styles.eyebrow}>Agent tax</p>
-            <h2>Агентская платформа дороже, но насколько полезнее?</h2>
-          </header>
-          <div className={styles.agentCompare}>
-            <AgentColumn name="WEB CHAT" metrics={web} />
-            <AgentColumn name="AGENT PLATFORM" metrics={platform} />
-          </div>
-          <p className={styles.insight}>
-            Agent Platform расходует в <strong>{tokenRatio.toFixed(1)}×</strong>{" "}
-            больше токенов на запрос. Следующий вопрос не «сколько tool calls»,
-            а «какова стоимость успешного outcome».
-          </p>
-        </article>
+            <div>
+              <dt>Net value</dt>
+              <dd>{formatSignedRubles(netValue)}</dd>
+            </div>
+          </dl>
+        </div>
       </section>
 
-      <section className={styles.scenarios}>
-        <header>
+      <section className={styles.ledger} aria-labelledby="value-ledger">
+        <header className={styles.sectionHead}>
           <div>
-            <p className={styles.eyebrow}>Demand map</p>
-            <h2>Сценарии, которые уже стали рабочими процессами</h2>
+            <p className={styles.kicker}>Value ledger</p>
+            <h2 id="value-ledger">Как активность превращается в результат</h2>
           </div>
           <p>
-            Baseline без LLM:{" "}
+            Синтетический прогон. Финансовые коэффициенты доступны как
+            low / base / high и требуют калибровки на реальных логах.
+          </p>
+        </header>
+
+        <div className={styles.equation}>
+          <LedgerTerm
+            label="Potential"
+            value={formatRubles(data.economics.potentialValueRub.base)}
+            note="все задачи завершены"
+          />
+          <span className={styles.operator}>×</span>
+          <LedgerTerm
+            label="Outcome yield"
+            value={formatPercent(outcomeYield)}
+            note="подтверждённая доля"
+            warning
+          />
+          <span className={styles.operator}>=</span>
+          <LedgerTerm
+            label="Realized"
+            value={formatRubles(data.economics.realizedValueRub.base)}
+            note="полученный результат"
+            accent
+          />
+          <span className={styles.operator}>−</span>
+          <LedgerTerm
+            label="TCO"
+            value={formatRubles(data.economics.tcoRub.total)}
+            note="модель + люди + infra"
+          />
+        </div>
+
+        <div className={styles.ledgerFoot}>
+          <span>Value Gap</span>
+          <strong>{formatRubles(data.economics.valueGapRub.base)}</strong>
+          <p>
+            Потенциал, который потерян на ошибках, повторах и проверке человеком.
+          </p>
+        </div>
+      </section>
+
+      <dl className={styles.telemetry} aria-label="Метрики использования">
+        <Telemetry label="MAU" value={Math.round(data.dataset.mau).toString()} />
+        <Telemetry
+          label="Requests"
+          value={formatInteger(data.dataset.events)}
+        />
+        <Telemetry
+          label="Tool calls"
+          value={formatInteger(data.usage.toolCalls)}
+        />
+        <Telemetry label="Tokens" value={formatCompact(data.usage.tokens)} />
+        <Telemetry
+          label="Success"
+          value={formatPercent(data.usage.successRate)}
+        />
+        <Telemetry
+          label="Cost / success"
+          value={formatRubles(costPerSuccess)}
+        />
+      </dl>
+
+      <div className={styles.analysisGrid}>
+        <section className={styles.analysisSection}>
+          <header className={styles.sectionHead}>
+            <div>
+              <p className={styles.kicker}>Sensitivity</p>
+              <h2>Не одна красивая цифра, а диапазон</h2>
+            </div>
+          </header>
+          <div className={styles.tableWrap}>
+            <table className={styles.dataTable}>
+              <thead>
+                <tr>
+                  <th>Допущение</th>
+                  <th>Realized</th>
+                  <th>ROI</th>
+                  <th>Возврат / ₽</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bands.map((band) => (
+                  <tr
+                    className={band === "base" ? styles.activeRow : undefined}
+                    key={band}
+                  >
+                    <th scope="row">{band.toUpperCase()}</th>
+                    <td>
+                      {formatRubles(data.economics.realizedValueRub[band])}
+                    </td>
+                    <td>{formatSignedPercent(data.economics.roi[band])}</td>
+                    <td>{formatRatio(data.economics.returnPerRuble[band])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className={styles.analysisSection}>
+          <header className={styles.sectionHead}>
+            <div>
+              <p className={styles.kicker}>Agent tax</p>
+              <h2>Больше действий — не значит больше пользы</h2>
+            </div>
+          </header>
+          <div className={styles.agentRows}>
+            <AgentRow name="Web chat" metrics={web} />
+            <AgentRow name="Agent platform" metrics={platform} />
+          </div>
+          <p className={styles.finding}>
+            Agent Platform тратит <strong>{tokenRatio.toFixed(1)}×</strong>{" "}
+            больше токенов на запрос. Поэтому сравниваем не tool calls, а
+            стоимость успешного outcome.
+          </p>
+        </section>
+      </div>
+
+      <section className={styles.scenarios}>
+        <header className={styles.sectionHead}>
+          <div>
+            <p className={styles.kicker}>Demand map</p>
+            <h2>Сценарии, ставшие рабочими процессами</h2>
+          </div>
+          <p>
+            Дешёвый baseline даёт{" "}
             <strong>
               {formatPercent(data.evaluation.scenarioTop1Accuracy)}
             </strong>{" "}
-            top-1 на {data.evaluation.evaluated} уникальных intent. Неуверенные
-            запросы уходят в локальную модель.
+            top-1 на {data.evaluation.evaluated} уникальных intent. Только
+            неуверенные запросы уходят в локальную модель.
           </p>
         </header>
-        <div className={styles.scenarioRows}>
-          <div className={styles.scenarioHeader}>
-            <span>Сценарий</span>
-            <span>Запросы</span>
-            <span>Success</span>
-            <span>Repeat</span>
-            <span>Tokens</span>
-          </div>
-          {data.topScenarios.map((scenario, index) => (
-            <div className={styles.scenarioRow} key={scenario.id}>
-              <span>
-                <i>{String(index + 1).padStart(2, "0")}</i>
-                {scenario.title}
-              </span>
-              <strong>{scenario.requests}</strong>
-              <span>{formatPercent(scenario.successRate)}</span>
-              <span>{formatPercent(scenario.repeatRate)}</span>
-              <span>{formatCompact(scenario.tokens)}</span>
-            </div>
-          ))}
+        <div className={styles.tableWrap}>
+          <table className={`${styles.dataTable} ${styles.scenarioTable}`}>
+            <thead>
+              <tr>
+                <th>Бизнес-сценарий</th>
+                <th>Запросы</th>
+                <th>Success</th>
+                <th>Repeat</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.topScenarios.map((scenario) => (
+                <tr key={scenario.id}>
+                  <th scope="row">{scenario.title}</th>
+                  <td>{scenario.requests}</td>
+                  <td>{formatPercent(scenario.successRate)}</td>
+                  <td>{formatPercent(scenario.repeatRate)}</td>
+                  <td>{formatCompact(scenario.tokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
       <section className={styles.proof}>
-        <p className={styles.eyebrow}>Intent isolation proof</p>
-        <span>RAG payload / {data.intentExtractionDemo.sourceChars} chars</span>
-        <strong>“{data.intentExtractionDemo.extracted}”</strong>
-        <span>{data.intentExtractionDemo.expectedRouting}</span>
+        <div>
+          <p className={styles.kicker}>Intent isolation proof</p>
+          <h2>Не классифицируем весь RAG-контекст</h2>
+        </div>
+        <div className={styles.payload}>
+          <span>
+            SOURCE / {formatInteger(data.intentExtractionDemo.sourceChars)} CHARS
+          </span>
+          <strong>“{data.intentExtractionDemo.extracted}”</strong>
+          <span>ROUTING / {data.intentExtractionDemo.expectedRouting}</span>
+        </div>
       </section>
 
       <footer className={styles.footer}>
-        <span>MEPHI · CROC · 2026</span>
+        <span>MEPHI × CROC / 2026</span>
         <p>{data.disclaimer}</p>
+        <Link href="/api/checkpoint">RAW JSON ↗</Link>
       </footer>
     </main>
   );
 }
 
-function FlowStep({
-  index,
+function LedgerTerm({
   label,
   value,
   note,
   accent = false,
+  warning = false,
 }: {
-  index: string;
   label: string;
   value: string;
   note: string;
   accent?: boolean;
+  warning?: boolean;
 }) {
+  const className = accent
+    ? styles.ledgerTermAccent
+    : warning
+      ? styles.ledgerTermWarning
+      : styles.ledgerTerm;
+
   return (
-    <div className={accent ? styles.flowStepAccent : styles.flowStep}>
-      <span>{index} / {label}</span>
+    <div className={className}>
+      <span>{label}</span>
       <strong>{value}</strong>
       <p>{note}</p>
     </div>
   );
 }
 
-function Metric({
-  label,
-  value,
-  warning = false,
-}: {
-  label: string;
-  value: string;
-  warning?: boolean;
-}) {
+function Telemetry({ label, value }: { label: string; value: string }) {
   return (
-    <div className={warning ? styles.metricWarning : styles.metric}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }
 
-function AgentColumn({
+function AgentRow({
   name,
   metrics,
 }: {
@@ -347,26 +429,31 @@ function AgentColumn({
     return null;
   }
 
+  const tokensPerRequest =
+    metrics.requests > 0 ? metrics.totalTokens / metrics.requests : 0;
+
   return (
-    <dl>
-      <dt>{name}</dt>
-      <div>
-        <span>users</span>
-        <strong>{metrics.activeUsers}</strong>
-      </div>
-      <div>
-        <span>requests</span>
-        <strong>{metrics.requests}</strong>
-      </div>
-      <div>
-        <span>tokens</span>
-        <strong>{formatCompact(metrics.totalTokens)}</strong>
-      </div>
-      <div>
-        <span>repeat</span>
-        <strong>{formatPercent(metrics.repeatRate)}</strong>
-      </div>
-    </dl>
+    <div className={styles.agentRow}>
+      <strong>{name}</strong>
+      <dl>
+        <div>
+          <dt>Users</dt>
+          <dd>{metrics.activeUsers}</dd>
+        </div>
+        <div>
+          <dt>Requests</dt>
+          <dd>{metrics.requests}</dd>
+        </div>
+        <div>
+          <dt>Tokens / req</dt>
+          <dd>{formatCompact(tokensPerRequest)}</dd>
+        </div>
+        <div>
+          <dt>Repeat</dt>
+          <dd>{formatPercent(metrics.repeatRate)}</dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 
@@ -374,9 +461,14 @@ function formatRubles(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: value >= 1_000_000 ? 2 : 0,
     notation: value >= 1_000_000 ? "compact" : "standard",
   }).format(value);
+}
+
+function formatSignedRubles(value: number) {
+  const formatted = formatRubles(Math.abs(value));
+  return value > 0 ? `+${formatted}` : value < 0 ? `−${formatted}` : formatted;
 }
 
 function formatInteger(value: number) {
@@ -406,5 +498,10 @@ function formatSignedPercent(value: number | null) {
 }
 
 function formatRatio(value: number | null) {
-  return value === null ? "нет данных" : value.toFixed(2);
+  return value === null
+    ? "нет данных"
+    : new Intl.NumberFormat("ru-RU", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
 }

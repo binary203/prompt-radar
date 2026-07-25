@@ -1,59 +1,60 @@
-# Design direction: operational editorial
+# Design direction: value ledger
 
-The dashboard should feel like an executive operations briefing assembled from
-real evidence, not a template marketplace SaaS.
+Интерфейс должен выглядеть как короткий финансово-технический отчёт для CTO,
+собранный из доказательств, а не как SaaS-шаблон или маркетинговый лендинг.
 
-## Visual idea
+## Визуальная идея
 
-`Prompt Radar` is a calm, dense signal room:
+`Prompt Radar` — тёмный, спокойный и плотный value ledger:
 
-- warm paper background instead of pure white;
-- near-black typography;
-- signal orange for problems and decisions;
-- dark teal for stable positive signals;
-- acid yellow-green only for live/active markers;
-- thin rules, square geometry and restrained 6–10 px radii;
-- large editorial headlines paired with compact monospaced data labels.
+- основной фон `#0d0d0d`;
+- рабочие поверхности `#141414` и `#1a1a1a`;
+- почти белый текст `#edede8`;
+- muted-подписи `#92928b`;
+- acid green `#c7f36a` только для подтверждённой ценности;
+- signal coral `#ff7455` только для потерь, риска и проблем;
+- тонкие линии вместо теней и отдельных карточек;
+- крупные редакционные выводы рядом с компактными моноширинными labels.
 
 ## Layout
 
-- 12-column desktop grid.
-- A thin top rail with product mark, dataset state and navigation.
-- The first screen starts with a one-sentence CTO briefing, not a marketing
-  hero.
-- Metrics form a continuous strip separated by rules, not floating cards.
-- Scenarios use dense rows with evidence, confidence and deltas.
-- Recommendations are ranked and numbered like an operational backlog.
-- Mobile order: briefing, decisions, metrics, scenarios, methodology.
+- тонкий sticky rail с продуктом, режимом данных и периодом;
+- первый экран формулирует разницу между расходами и outcome;
+- экономика читается одной непрерывной формулой:
+  `Potential × Outcome Yield = Realized − TCO`;
+- метрики образуют непрерывную telemetry-полосу;
+- сравнения и сценарии оформляются строками и таблицами;
+- mobile сохраняет порядок аргумента: тезис, base proxy, формула, evidence.
 
 ## Typography
 
-Use system fonts to keep deployment deterministic:
+Используются системные шрифты без внешней загрузки:
 
 - display/body: `Arial`, `Helvetica`, sans-serif;
 - data labels: `ui-monospace`, `SFMono-Regular`, `Consolas`, monospace.
 
-Use uppercase labels sparingly. Numbers use tabular figures.
+Числа используют tabular figures. Uppercase допустим только в коротких
+служебных labels.
 
 ## Forbidden patterns
 
+- нумерация секций `01 / 02 / 03` как декоративный приём;
+- ранги перед каждой строкой без бизнес-смысла;
+- сетка одинаковых карточек;
 - purple/blue gradients;
-- glass panels and blur;
-- enormous round corners;
-- a centered hero with “AI-powered insights”;
-- floating 3D shapes, blobs or decorative orbs;
-- a grid of identical cards;
-- excessive shadows;
-- pill-shaped containers around every label;
-- emojis as product icons;
-- fake activity feeds or metrics;
-- UMAP scatterplots without a business interpretation.
+- glassmorphism, blur и декоративные свечения;
+- огромные скругления и pills вокруг каждого label;
+- centered hero с «AI-powered insights»;
+- floating orbs, emoji-иконки и стоковые иллюстрации;
+- fake activity feed и выдуманные метрики;
+- график, который не отвечает на конкретный бизнес-вопрос.
 
 ## Component rules
 
-- A card exists only when content needs a distinct interaction or hierarchy.
-- Borders carry hierarchy before shadows do.
-- Every chart must answer a named business question.
-- Every alert links to evidence or representative requests.
-- Growth uses a signed number and comparison period.
-- Error/proxy signals must be visually distinguished from confirmed failures.
+- контейнер появляется только для отдельного смысла или взаимодействия;
+- иерархию сначала создают spacing, типографика и borders;
+- цвет не должен быть единственным способом отличить состояние;
+- proxy, измеренное значение и предположение должны быть подписаны;
+- проблема должна вести к сценарию или representative request;
+- motion допустим только как короткий feedback состояния и отключается через
+  `prefers-reduced-motion`.

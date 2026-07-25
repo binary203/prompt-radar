@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f2efe6;
-  --paper-strong: #e7e2d6;
-  --ink: #141713;
-  --ink-muted: #5f625a;
-  --rule: #c9c4b7;
-  --signal: #f15a37;
-  --signal-soft: #f7d7cb;
-  --teal: #155f55;
-  --active: #d7f36a;
-  --white: #fbfaf6;
+  --paper: #0d0d0d;
+  --paper-strong: #141414;
+  --ink: #edede8;
+  --ink-muted: #92928b;
+  --rule: #2b2b2b;
+  --signal: #ff7455;
+  --signal-soft: #2b1814;
+  --teal: #9fc54d;
+  --active: #c7f36a;
+  --white: #1a1a1a;
 }
 
 * {
@@ -36,7 +36,7 @@ a {
 
 ::selection {
   background: var(--active);
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .radar-shell {
