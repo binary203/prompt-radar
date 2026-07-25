@@ -63,6 +63,7 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
   ]);
   const taxonomy = taxonomyData as Taxonomy;
   const predictions = events.map((event) => predict(event, taxonomy));
+  const period = getEventPeriod(events);
   const aggregation = aggregateEvents(
     predictions.map(({ event, classification }) => ({
       ...event,
@@ -124,9 +125,15 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
       periodDays: 60,
       activeUsers: aggregation.activeUsers,
       mau: aggregation.mau,
+      period,
     },
     usage: {
       toolCalls: aggregation.toolCalls,
+      toolErrors: countToolErrors(events),
+      toolErrorRate: safeRate(
+        countToolErrors(events),
+        aggregation.toolCalls,
+      ),
       tokens: aggregation.totalTokens,
       successes: aggregation.successes,
       partials: aggregation.partials,
@@ -134,6 +141,11 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
       repeats: aggregation.repeats,
       successRate: aggregation.successRate,
       repeatRate: aggregation.repeatRate,
+      averageLatencyMs: average(events.map((event) => event.latencyMs)),
+      p95LatencyMs: percentile(
+        events.map((event) => event.latencyMs),
+        0.95,
+      ),
     },
     economics: {
       assumptions: {
@@ -175,6 +187,7 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
     },
     evaluation: evaluate(predictions, goldLabels),
     agents: aggregation.perAgent,
+    trend: buildWeeklyTrend(events),
     topScenarios,
     intentExtractionDemo: {
       sourceChars: DEMO_WRAPPED_MESSAGE.length,
@@ -272,4 +285,95 @@ async function loadGoldLabels(): Promise<GoldLabel[]> {
 
 function safeRate(numerator: number, denominator: number) {
   return denominator > 0 ? numerator / denominator : 0;
+}
+
+function getEventPeriod(events: OperationalEvent[]) {
+  const timestamps = events
+    .map((event) => new Date(event.createdAt).valueOf())
+    .filter(Number.isFinite)
+    .sort((left, right) => left - right);
+
+  if (timestamps.length === 0) {
+    return { from: null, to: null };
+  }
+
+  return {
+    from: new Date(timestamps[0]).toISOString(),
+    to: new Date(timestamps[timestamps.length - 1]).toISOString(),
+  };
+}
+
+function countToolErrors(events: OperationalEvent[]) {
+  return events.reduce(
+    (total, event) =>
+      total +
+      event.toolCalls.filter((toolCall) => toolCall.status === "error")
+        .length,
+    0,
+  );
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function percentile(values: number[], rate: number) {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.floor((sorted.length - 1) * rate);
+  return sorted[index];
+}
+
+function buildWeeklyTrend(events: OperationalEvent[]) {
+  const DAY_MS = 86_400_000;
+  const BUCKET_MS = DAY_MS * 7;
+  const timestamps = events
+    .map((event) => new Date(event.createdAt).valueOf())
+    .filter(Number.isFinite);
+
+  if (timestamps.length === 0) {
+    return [];
+  }
+
+  const periodStart = Math.min(...timestamps);
+  const buckets = new Map<number, OperationalEvent[]>();
+
+  for (const event of events) {
+    const timestamp = new Date(event.createdAt).valueOf();
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+    const bucketIndex = Math.floor((timestamp - periodStart) / BUCKET_MS);
+    const bucket = buckets.get(bucketIndex) ?? [];
+    bucket.push(event);
+    buckets.set(bucketIndex, bucket);
+  }
+
+  return [...buckets.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([bucketIndex, bucket]) => {
+      const metrics = aggregateEvents(bucket);
+      const bucketStart = new Date(periodStart + bucketIndex * BUCKET_MS);
+
+      return {
+        date: bucketStart.toISOString(),
+        label: new Intl.DateTimeFormat("ru-RU", {
+          day: "2-digit",
+          month: "short",
+          timeZone: "UTC",
+        })
+          .format(bucketStart)
+          .replace(".", ""),
+        requests: metrics.requests,
+        activeUsers: metrics.activeUsers,
+        tokens: metrics.totalTokens,
+        successRate: metrics.successRate,
+        repeatRate: metrics.repeatRate,
+      };
+    });
 }
