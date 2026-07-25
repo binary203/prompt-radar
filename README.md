@@ -9,6 +9,22 @@ Prompt Radar отвечает не на вопрос «сколько сотру
 > Сколько подтверждённой ценности возвращает один рубль полной стоимости AI и
 > где эта ценность теряется?
 
+## Демо-материалы
+
+- [Видео dashboard, MP4, 18 секунд](artifacts/prompt-radar-demo.mp4)
+- [PDF с описанием, ключевыми метриками и полным dashboard](artifacts/prompt-radar-dashboard.pdf)
+- [Полноразмерный скриншот dashboard](artifacts/prompt-radar-dashboard.png)
+
+Для живой демонстрации:
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+Открыть <http://localhost:3000>.
+
 ## Что делает продукт
 
 На входе — OpenAI-compatible запросы и, если они доступны, operational traces:
@@ -49,6 +65,9 @@ Realized − TCO = Net Value
 
 Токены и tool calls — это активность и стоимость. Сами по себе они не являются
 пользой.
+
+Показатель `562 ₽` на dashboard означает `TCO / successful outcome`, то есть
+затраты на один успешный результат. Это не экономия бизнеса.
 
 ## Что уже работает
 

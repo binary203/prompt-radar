@@ -236,9 +236,9 @@ export default function CheckpointPage() {
               tone="warning"
             />
             <Kpi
-              label="Стоимость успеха"
+              label="Затраты на успешный результат"
               value={formatRubles(costPerSuccess)}
-              note={`${formatCompact(data.usage.tokens)} токенов всего`}
+              note="TCO / success, это не экономия"
             />
           </section>
 
