@@ -10,9 +10,25 @@ export type AdjustableValue = number | BandValue;
 
 export interface OutcomeAssumptions {
   successRate: AdjustableValue;
-  repeatRate: AdjustableValue;
+  /**
+   * Optional. Only meaningful when `requestCount` still contains retries.
+   * When demand is already collapsed to unique tasks, leave it unset —
+   * otherwise repeats are subtracted twice.
+   */
+  repeatRate?: AdjustableValue;
   reviewTax: AdjustableValue;
   feedbackFactor: AdjustableValue;
+}
+
+/**
+ * One slice of demand with its own manual-work estimate, e.g. a business
+ * scenario. Potential value is the sum over slices, so an expensive rare
+ * scenario is not averaged away by a cheap frequent one.
+ */
+export interface DemandSegment {
+  key?: string;
+  requestCount: number;
+  manualMinutesPerRequest: AdjustableValue;
 }
 
 export interface FixedCosts {
@@ -25,7 +41,9 @@ export interface FixedCosts {
 
 export interface RoiInput {
   requestCount: number;
-  manualMinutesPerRequest: AdjustableValue;
+  /** Flat estimate. Ignored when `segments` is provided. */
+  manualMinutesPerRequest?: AdjustableValue;
+  segments?: readonly DemandSegment[];
   sessionLengthFactor?: AdjustableValue;
   outcome: OutcomeAssumptions;
   totalTokens?: number;
@@ -49,6 +67,8 @@ export interface TcoBreakdown {
 export interface RoiBandResult {
   potentialMinutes: number;
   realizedMinutes: number;
+  /** Weighted average across segments, for display next to the assumptions. */
+  effectiveManualMinutes: number;
   fteMonthsPotential: number;
   fteMonthsRealized: number;
   potentialValue: number;
@@ -158,20 +178,19 @@ function calculateBand(
   workingHoursPerMonth: number,
   tco: number,
 ): RoiBandResult {
-  const manualMinutes = nonNegative(
-    readBand(input.manualMinutesPerRequest, band),
-  );
   const sessionLengthFactor = nonNegative(
     readBand(input.sessionLengthFactor ?? 1, band),
   );
   const successRate = rate(readBand(input.outcome.successRate, band));
-  const repeatRate = rate(readBand(input.outcome.repeatRate, band));
+  const repeatRate = rate(readBand(input.outcome.repeatRate ?? 0, band));
   const reviewTax = rate(readBand(input.outcome.reviewTax, band));
   const feedbackFactor = rate(
     readBand(input.outcome.feedbackFactor, band),
   );
-  const potentialMinutes =
-    requestCount * manualMinutes * sessionLengthFactor;
+  const baseMinutes = segmentMinutes(input, band, requestCount);
+  const potentialMinutes = baseMinutes * sessionLengthFactor;
+  const effectiveManualMinutes =
+    requestCount > 0 ? baseMinutes / requestCount : 0;
   const outcomeYield =
     successRate *
     (1 - repeatRate) *
@@ -189,6 +208,7 @@ function calculateBand(
   return {
     potentialMinutes,
     realizedMinutes,
+    effectiveManualMinutes,
     fteMonthsPotential: potentialMinutes / minutesPerFteMonth,
     fteMonthsRealized: realizedMinutes / minutesPerFteMonth,
     potentialValue,
@@ -205,6 +225,33 @@ function calculateBand(
     ),
     profitable: realizedValue > tco,
   };
+}
+
+/**
+ * Manual minutes before the session-length factor. Segments are summed so an
+ * expensive rare scenario keeps its weight; a flat estimate is the fallback.
+ */
+function segmentMinutes(
+  input: RoiInput,
+  band: EstimateBand,
+  requestCount: number,
+): number {
+  const segments = input.segments;
+
+  if (segments && segments.length > 0) {
+    return segments.reduce(
+      (total, segment) =>
+        total +
+        nonNegative(segment.requestCount) *
+          nonNegative(readBand(segment.manualMinutesPerRequest, band)),
+      0,
+    );
+  }
+
+  return (
+    requestCount *
+    nonNegative(readBand(input.manualMinutesPerRequest ?? 0, band))
+  );
 }
 
 function readBand(value: AdjustableValue, band: EstimateBand): number {

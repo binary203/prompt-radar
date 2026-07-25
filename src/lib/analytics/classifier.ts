@@ -11,6 +11,12 @@ export interface TaxonomyScenario {
   domain: BusinessDomain;
   systems?: readonly string[];
   manual_work_steps?: readonly string[];
+  /** Expert estimate of doing this scenario by hand, in minutes. */
+  manual_minutes?: {
+    low: number;
+    base: number;
+    high: number;
+  };
 }
 
 export interface Taxonomy {

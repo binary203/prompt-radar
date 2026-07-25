@@ -36,10 +36,25 @@ type TrendPoint = {
   repeatRate: number;
 };
 
+type SegmentMetrics = {
+  name: string;
+  requests: number;
+  tasks: number;
+  activeUsers: number;
+  tokens: number;
+  successRate: number;
+  reworkRate: number;
+  realizedValueRub: number;
+  valueGapRub: number;
+  fteMonthsRealized: number;
+  netValueRub: number;
+};
+
 type CheckpointResponse = {
   generatedAt: string;
   dataset: {
     events: number;
+    tasks: number;
     uniqueIntentSeeds: number;
     periodDays: number;
     activeUsers: number;
@@ -63,7 +78,19 @@ type CheckpointResponse = {
     averageLatencyMs: number;
     p95LatencyMs: number;
   };
+  tasks: {
+    count: number;
+    succeeded: number;
+    reworked: number;
+    successRate: number;
+    reworkRate: number;
+    attemptsPerTask: number;
+  };
   economics: {
+    assumptions: {
+      effectiveManualMinutesPerTask: Band;
+      taskCount: number;
+    };
     potentialValueRub: Band;
     realizedValueRub: Band;
     valueGapRub: Band;
@@ -80,6 +107,7 @@ type CheckpointResponse = {
     roi: NullableBand;
     returnPerRuble: NullableBand;
     fteMonthsRealized: Band;
+    fteMonthsPotential: Band;
   };
   evaluation: {
     evaluated: number;
@@ -89,19 +117,28 @@ type CheckpointResponse = {
     predictedUnknownRate: number;
   };
   agents: Record<string, AgentMetrics>;
+  departments: SegmentMetrics[];
+  roles: SegmentMetrics[];
   trend: TrendPoint[];
   topScenarios: Array<{
     id: string;
     title: string;
     requests: number;
+    tasks: number;
     successRate: number;
     repeatRate: number;
     tokens: number;
+    manualMinutes: number;
+    potentialValueRub: number;
+    realizedValueRub: number;
+    valueGapRub: number;
   }>;
   intentExtractionDemo: {
     sourceChars: number;
+    extractedChars: number;
+    compressionRatio: number;
     extracted: string;
-    expectedRouting: string;
+    routed: string;
   };
   disclaimer: string;
 };
@@ -144,6 +181,12 @@ export default function CheckpointPage() {
   const web = data.agents.web_chat;
   const netValue =
     data.economics.realizedValueRub.base - data.economics.tcoRub.total;
+  // Cost per successful task, not per successful event: retries of the same
+  // task are cost, not extra results.
+  const costPerSuccess =
+    data.tasks.succeeded > 0
+      ? data.economics.tcoRub.total / data.tasks.succeeded
+      : 0;
   const requestDelta = calculateDelta(
     data.trend[0]?.requests,
     data.trend.at(-1)?.requests,
@@ -195,7 +238,7 @@ export default function CheckpointPage() {
                 type="button"
               >
                 <DownloadIcon />
-                Печать / PDF
+                Экспорт PDF
               </button>
             </div>
           </section>
@@ -212,7 +255,7 @@ export default function CheckpointPage() {
             <Kpi
               label="Запросы"
               value={formatInteger(data.dataset.events)}
-              note={`${formatSignedPercent(requestDelta)} к первой неделе`}
+              note={`${formatInteger(data.tasks.count)} задач · ${formatSignedPercent(requestDelta)} к первой неделе`}
             />
             <Kpi
               label="Активные пользователи"
@@ -220,21 +263,27 @@ export default function CheckpointPage() {
               note={`MAU ${Math.round(data.dataset.mau)}`}
             />
             <Kpi
-              label="Успешные outcome"
-              value={formatPercent(data.usage.successRate)}
+              label="Задачи с результатом"
+              value={formatPercent(data.tasks.successRate)}
               note={`${formatSignedPoints(successDelta)} за период`}
               tone="positive"
             />
             <Kpi
-              label="Повторные запросы"
-              value={formatPercent(data.usage.repeatRate)}
-              note={`${formatInteger(data.usage.repeats)} повторов`}
+              label="Высвобождено FTE"
+              value={formatFte(data.economics.fteMonthsRealized.base)}
+              note={`из ${formatFte(data.economics.fteMonthsPotential.base)} потенциальных`}
+              tone="positive"
+            />
+            <Kpi
+              label="Задачи с переспросом"
+              value={formatPercent(data.tasks.reworkRate)}
+              note={`${formatInteger(data.tasks.reworked)} задач переформулировали`}
               tone="warning"
             />
             <Kpi
-              label="Tool calls"
-              value={formatInteger(data.usage.toolCalls)}
-              note={`${formatInteger(data.usage.toolErrors)} ошибок · ${formatPercent(data.usage.toolErrorRate)}`}
+              label="Стоимость результата"
+              value={formatRubles(costPerSuccess)}
+              note={`TCO / ${formatInteger(data.tasks.succeeded)} решённых задач`}
             />
           </section>
 
@@ -333,8 +382,14 @@ export default function CheckpointPage() {
                   </tbody>
                 </table>
                 <p>
-                  Manual time: 30 / 45 / 65 минут. Review tax и outcome
-                  учитываются отдельно для каждого сценария оценки.
+                  Ручное время задано посценарно, средневзвешенно{" "}
+                  {formatMinutes(
+                    data.economics.assumptions.effectiveManualMinutesPerTask
+                      .base,
+                  )}{" "}
+                  на задачу. Спрос считается по{" "}
+                  {formatInteger(data.tasks.count)} задачам, повторные попытки
+                  остаются в стоимости и не вычитаются из ценности дважды.
                 </p>
               </div>
             </div>
@@ -380,13 +435,54 @@ export default function CheckpointPage() {
               </div>
               <div className={styles.intentEvidence}>
                 <span>
-                  Intent extracted from{" "}
-                  {formatInteger(data.intentExtractionDemo.sourceChars)} chars
+                  Из{" "}
+                  {formatInteger(data.intentExtractionDemo.sourceChars)} символов
+                  payload осталось{" "}
+                  {formatInteger(data.intentExtractionDemo.extractedChars)} —
+                  сжатие в{" "}
+                  {Math.round(data.intentExtractionDemo.compressionRatio)} раз
                 </span>
                 <strong>“{data.intentExtractionDemo.extracted}”</strong>
-                <small>{data.intentExtractionDemo.expectedRouting}</small>
+                <small>→ {data.intentExtractionDemo.routed}</small>
               </div>
             </article>
+          </section>
+
+          <section className={styles.scenarios} id="departments">
+            <PanelHeader
+              title="Ценность по департаментам"
+              subtitle="Кто получает измеримую отдачу, а кто пока нет"
+            >
+              <span className={styles.tableHint}>
+                TCO аллоцирован по доле токенов
+              </span>
+            </PanelHeader>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.scenarioTable}>
+                <thead>
+                  <tr>
+                    <th>Департамент</th>
+                    <th>Задачи</th>
+                    <th>Люди</th>
+                    <th>Success</th>
+                    <th>Переспрос</th>
+                    <th>FTE</th>
+                    <th>Realized</th>
+                    <th>Net value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.departments.map((segment) => (
+                    <SegmentRow
+                      key={segment.name}
+                      maxTasks={data.departments[0]?.tasks ?? 1}
+                      segment={segment}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className={styles.scenarios} id="scenarios">
@@ -408,6 +504,9 @@ export default function CheckpointPage() {
                     <th>Объём</th>
                     <th>Success</th>
                     <th>Repeat</th>
+                    <th>Ручное время</th>
+                    <th>Realized</th>
+                    <th>Value Gap</th>
                     <th>Tokens / req</th>
                     <th>Сигнал</th>
                   </tr>
@@ -450,6 +549,10 @@ function Sidebar() {
         <a href="#scenarios">
           <DemandIcon />
           Сценарии
+        </a>
+        <a href="#departments">
+          <DepartmentsIcon />
+          Департаменты
         </a>
         <a href="#economics">
           <EconomicsIcon />
@@ -936,6 +1039,11 @@ function ScenarioRow({
       >
         {formatPercent(scenario.repeatRate)}
       </td>
+      <td>{scenario.manualMinutes} мин</td>
+      <td>{formatRubles(scenario.realizedValueRub)}</td>
+      <td className={styles.warningText}>
+        {formatRubles(scenario.valueGapRub)}
+      </td>
       <td>{formatCompact(tokensPerRequest)}</td>
       <td>
         <span
@@ -949,6 +1057,44 @@ function ScenarioRow({
         >
           {signal}
         </span>
+      </td>
+    </tr>
+  );
+}
+
+function SegmentRow({
+  segment,
+  maxTasks,
+}: {
+  segment: SegmentMetrics;
+  maxTasks: number;
+}) {
+  return (
+    <tr>
+      <th scope="row">
+        <strong>{segment.name}</strong>
+        <span>
+          <i style={{ width: `${(segment.tasks / maxTasks) * 100}%` }} />
+        </span>
+      </th>
+      <td>{formatInteger(segment.tasks)}</td>
+      <td>{formatInteger(segment.activeUsers)}</td>
+      <td>{formatPercent(segment.successRate)}</td>
+      <td
+        className={
+          segment.reworkRate >= 0.15 ? styles.warningText : undefined
+        }
+      >
+        {formatPercent(segment.reworkRate)}
+      </td>
+      <td>{formatFte(segment.fteMonthsRealized)}</td>
+      <td>{formatRubles(segment.realizedValueRub)}</td>
+      <td
+        className={
+          segment.netValueRub < 0 ? styles.warningText : styles.goodSignal
+        }
+      >
+        {formatSignedRubles(segment.netValueRub)}
       </td>
     </tr>
   );
@@ -969,6 +1115,16 @@ function DemandIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
       <path d="M3 15V9M10 15V4M17 15v-8" />
+    </svg>
+  );
+}
+
+function DepartmentsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <rect height="7" width="6" x="2" y="11" />
+      <rect height="12" width="6" x="12" y="6" />
+      <path d="M2 18h16" />
     </svg>
   );
 }
@@ -1005,6 +1161,19 @@ function DownloadIcon() {
       <path d="M10 2v11M6 9l4 4 4-4M3 17h14" />
     </svg>
   );
+}
+
+function formatMinutes(value: number) {
+  return `${new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 1,
+  }).format(value)} мин`;
+}
+
+function formatFte(value: number) {
+  return `${new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  }).format(value)} FTE`;
 }
 
 function formatRubles(value: number) {

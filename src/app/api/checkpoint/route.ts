@@ -1,14 +1,20 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import ragPayloadSample from "@/data/synthetic/rag-payload-sample.json";
 import taxonomyData from "@/data/synthetic/taxonomy.json";
 import {
   aggregateEvents,
   calculateRoi,
   classifyIntent,
   extractUserIntent,
+  rollupTasks,
+  type BandValue,
   type ClassificationResult,
+  type DemandSegment,
+  type RoiResult,
   type Taxonomy,
+  type TaxonomyScenario,
 } from "@/lib/analytics";
 import {
   operationalEventSchema,
@@ -30,6 +36,12 @@ type Prediction = {
   classification: ClassificationResult;
 };
 
+/** An event after classification, ready for demand and economics rollups. */
+type ClassifiedEvent = OperationalEvent & {
+  scenarioIds: string[];
+  primaryScenarioId: string;
+};
+
 const DEMO_COSTS = {
   tokenCostPerThousand: 4.3,
   fixedCostsFor60DaySample: {
@@ -40,8 +52,10 @@ const DEMO_COSTS = {
   },
 } as const;
 
-const DEMO_WRAPPED_MESSAGE =
-  "<context>Большой фрагмент корпоративной документации и истории переписки, который не должен определять категорию запроса.</context>\n<user_query>а с госсистемой Честный знак какая интеграция и для чего?</user_query>";
+/** Share of agent output a human still has to read and correct. */
+const REVIEW_TAX: BandValue = { low: 0.5, base: 0.3, high: 0.15 };
+const FEEDBACK_FACTOR: BandValue = { low: 0.85, base: 0.95, high: 0.99 };
+const UNKNOWN_SCENARIO = "unknown";
 
 let cachedCheckpoint: Promise<Record<string, unknown>> | null = null;
 
@@ -63,57 +77,60 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
   ]);
   const taxonomy = taxonomyData as Taxonomy;
   const predictions = events.map((event) => predict(event, taxonomy));
-  const period = getEventPeriod(events);
-  const aggregation = aggregateEvents(
-    predictions.map(({ event, classification }) => ({
+  const classified: ClassifiedEvent[] = predictions.map(
+    ({ event, classification }) => ({
       ...event,
       scenarioIds: classification.labels.map((label) => label.scenarioId),
-    })),
+      primaryScenarioId:
+        classification.primary?.scenarioId ?? UNKNOWN_SCENARIO,
+    }),
   );
-  const uniqueTaskCount = Math.max(
-    0,
-    aggregation.requests - aggregation.repeats,
-  );
-  const roi = calculateRoi({
-    requestCount: uniqueTaskCount,
-    manualMinutesPerRequest: { low: 30, base: 45, high: 65 },
-    outcome: {
-      successRate: {
-        low: Math.max(0, aggregation.successRate * 0.85),
-        base: aggregation.successRate,
-        high: Math.min(1, aggregation.successRate * 1.1),
-      },
-      repeatRate: {
-        low: Math.min(1, aggregation.repeatRate * 1.25),
-        base: aggregation.repeatRate,
-        high: aggregation.repeatRate * 0.75,
-      },
-      reviewTax: { low: 0.5, base: 0.3, high: 0.15 },
-      feedbackFactor: { low: 0.85, base: 0.95, high: 0.99 },
-    },
-    totalTokens: aggregation.totalTokens,
-    tokenCostPerThousand: DEMO_COSTS.tokenCostPerThousand,
-    fixedCosts: DEMO_COSTS.fixedCostsFor60DaySample,
-  });
+  const period = getEventPeriod(events);
+  const aggregation = aggregateEvents(classified);
 
-  const scenarioTitleById = Object.fromEntries(
-    taxonomy.scenarios.map((scenario) => [
-      scenario.scenario_id,
-      scenario.title_ru,
-    ]),
+  // Demand is measured in tasks, not events: a reformulated request is the
+  // same unit of work. Retry tokens stay in TCO, so retries cost money and
+  // earn nothing instead of being subtracted from value twice.
+  const tasks = rollupTasks(demandView(classified));
+  const manualMinutes = manualMinutesResolver(taxonomy);
+  const roi = calculateRoi(
+    roiInput(classified, tasks.successRate, manualMinutes, {
+      totalTokens: aggregation.totalTokens,
+      fixedCosts: DEMO_COSTS.fixedCostsFor60DaySample,
+    }),
+  );
+
+  const scenarioById = new Map(
+    taxonomy.scenarios.map((scenario) => [scenario.scenario_id, scenario]),
   );
   const topScenarios = Object.entries(aggregation.perScenario)
-    .filter(([scenarioId]) => scenarioId !== "unknown")
+    .filter(([scenarioId]) => scenarioId !== UNKNOWN_SCENARIO)
     .sort(([, left], [, right]) => right.requests - left.requests)
     .slice(0, 6)
-    .map(([scenarioId, metrics]) => ({
-      id: scenarioId,
-      title: scenarioTitleById[scenarioId] ?? scenarioId,
-      requests: metrics.requests,
-      successRate: metrics.successRate,
-      repeatRate: metrics.repeatRate,
-      tokens: metrics.totalTokens,
-    }));
+    .map(([scenarioId, metrics]) => {
+      const slice = classified.filter((event) =>
+        event.scenarioIds.includes(scenarioId),
+      );
+      const sliceRoi = sliceEconomics(
+        slice,
+        manualMinutes,
+        aggregation.totalTokens,
+      );
+
+      return {
+        id: scenarioId,
+        title: scenarioById.get(scenarioId)?.title_ru ?? scenarioId,
+        requests: metrics.requests,
+        tasks: tasks.perScenario[scenarioId]?.taskCount ?? 0,
+        successRate: metrics.successRate,
+        repeatRate: metrics.repeatRate,
+        tokens: metrics.totalTokens,
+        manualMinutes: manualMinutes(scenarioId).base,
+        potentialValueRub: sliceRoi.base.potentialValue,
+        realizedValueRub: sliceRoi.base.realizedValue,
+        valueGapRub: sliceRoi.base.valueGap,
+      };
+    });
 
   const checkpoint = {
     generatedAt: new Date().toISOString(),
@@ -121,6 +138,7 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
     evidenceLevel: "request + tool trace + synthetic outcome",
     dataset: {
       events: aggregation.requests,
+      tasks: tasks.taskCount,
       uniqueIntentSeeds: 188,
       periodDays: 60,
       activeUsers: aggregation.activeUsers,
@@ -147,65 +165,249 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
         0.95,
       ),
     },
+    tasks: {
+      count: tasks.taskCount,
+      succeeded: tasks.succeeded,
+      reworked: tasks.reworked,
+      successRate: tasks.successRate,
+      reworkRate: tasks.reworkRate,
+      attemptsPerTask: tasks.attemptsPerTask,
+      note:
+        "Задача — исходный запрос вместе со всеми переформулировками. Спрос считается по задачам, повторные попытки остаются в стоимости.",
+    },
     economics: {
       assumptions: {
         monthlyFteCostRub: roi.assumptions.fteMonthlyCost,
         workingHoursPerMonth: roi.assumptions.workingHoursPerMonth,
-        proxyManualMinutesPerTask: { low: 30, base: 45, high: 65 },
-        uniqueTaskCount,
-        costsFor60DayDemoSampleRub:
-          DEMO_COSTS.fixedCostsFor60DaySample,
+        taskCount: tasks.taskCount,
+        manualMinutesSource: "посценарная экспертная оценка из taxonomy.json",
+        effectiveManualMinutesPerTask: {
+          low: roi.low.effectiveManualMinutes,
+          base: roi.base.effectiveManualMinutes,
+          high: roi.high.effectiveManualMinutes,
+        },
+        reviewTax: REVIEW_TAX,
+        feedbackFactor: FEEDBACK_FACTOR,
+        costsFor60DayDemoSampleRub: DEMO_COSTS.fixedCostsFor60DaySample,
         tokenCostPerThousandRub: DEMO_COSTS.tokenCostPerThousand,
       },
-      potentialValueRub: {
-        low: roi.low.potentialValue,
-        base: roi.base.potentialValue,
-        high: roi.high.potentialValue,
-      },
-      realizedValueRub: {
-        low: roi.low.realizedValue,
-        base: roi.base.realizedValue,
-        high: roi.high.realizedValue,
-      },
-      valueGapRub: {
-        low: roi.low.valueGap,
-        base: roi.base.valueGap,
-        high: roi.high.valueGap,
-      },
+      potentialValueRub: bandOf(roi, (result) => result.potentialValue),
+      realizedValueRub: bandOf(roi, (result) => result.realizedValue),
+      valueGapRub: bandOf(roi, (result) => result.valueGap),
       tcoRub: roi.tco,
-      roi: { low: roi.low.roi, base: roi.base.roi, high: roi.high.roi },
+      roi: {
+        low: roi.low.roi,
+        base: roi.base.roi,
+        high: roi.high.roi,
+      },
       returnPerRuble: {
         low: roi.low.returnPerRuble,
         base: roi.base.returnPerRuble,
         high: roi.high.returnPerRuble,
       },
-      fteMonthsRealized: {
-        low: roi.low.fteMonthsRealized,
-        base: roi.base.fteMonthsRealized,
-        high: roi.high.fteMonthsRealized,
-      },
+      fteMonthsRealized: bandOf(
+        roi,
+        (result) => result.fteMonthsRealized,
+      ),
+      fteMonthsPotential: bandOf(
+        roi,
+        (result) => result.fteMonthsPotential,
+      ),
     },
     evaluation: evaluate(predictions, goldLabels),
     agents: aggregation.perAgent,
+    departments: breakdown(
+      aggregation.perDepartment,
+      classified,
+      (event) => event.department,
+      manualMinutes,
+      aggregation.totalTokens,
+    ),
+    roles: breakdown(
+      aggregation.perRole,
+      classified,
+      (event) => event.userRole,
+      manualMinutes,
+      aggregation.totalTokens,
+    ),
     trend: buildWeeklyTrend(events),
     topScenarios,
-    intentExtractionDemo: {
-      sourceChars: DEMO_WRAPPED_MESSAGE.length,
-      extracted: extractUserIntent({
-        messages: [
-          {
-            role: "user",
-            content: DEMO_WRAPPED_MESSAGE,
-          },
-        ],
-      }),
-      expectedRouting: "UNKNOWN: передать в LLM fallback",
-    },
+    intentExtractionDemo: intentExtractionDemo(taxonomy),
     disclaimer:
-      "Финансовые значения — proxy для воспроизводимости формул на синтетике: повторы исключены из нового спроса, ручное время задано диапазоном, TCO аллоцирован на 60-дневную выборку. Боевой ROI требует калибровки КРОК.",
+      "Финансовые значения — proxy для воспроизводимости формул на синтетике: спрос считается по задачам, ручное время задано посценарным диапазоном, TCO аллоцирован на 60-дневную выборку. Боевой ROI требует калибровки КРОК.",
   };
 
   return checkpoint;
+}
+
+/**
+ * Only the primary label defines demand. Keeping every label here would let a
+ * multi-intent request be counted once per scenario and inflate potential.
+ */
+function demandView(events: readonly ClassifiedEvent[]) {
+  return events.map((event) => ({
+    ...event,
+    scenarioIds: [event.primaryScenarioId],
+  }));
+}
+
+function roiInput(
+  events: readonly ClassifiedEvent[],
+  successRate: number,
+  manualMinutes: (scenarioId: string) => BandValue,
+  costs: {
+    totalTokens: number;
+    fixedCosts: Record<string, number>;
+  },
+) {
+  const rollup = rollupTasks(demandView(events));
+  const segments: DemandSegment[] = Object.entries(rollup.perScenario).map(
+    ([scenarioId, metrics]) => ({
+      key: scenarioId,
+      requestCount: metrics.taskCount,
+      manualMinutesPerRequest: manualMinutes(scenarioId),
+    }),
+  );
+
+  return {
+    requestCount: rollup.taskCount,
+    segments,
+    outcome: {
+      successRate: {
+        low: Math.max(0, successRate * 0.85),
+        base: successRate,
+        high: Math.min(1, successRate * 1.1),
+      },
+      reviewTax: REVIEW_TAX,
+      feedbackFactor: FEEDBACK_FACTOR,
+    },
+    totalTokens: costs.totalTokens,
+    tokenCostPerThousand: DEMO_COSTS.tokenCostPerThousand,
+    fixedCosts: costs.fixedCosts,
+  };
+}
+
+/**
+ * Economics for a slice (scenario, department, role). Fixed costs follow the
+ * slice's token share, so a cheap slice is not charged for an expensive one.
+ */
+function sliceEconomics(
+  slice: readonly ClassifiedEvent[],
+  manualMinutes: (scenarioId: string) => BandValue,
+  totalTokens: number,
+): RoiResult {
+  const sliceTokens = slice.reduce(
+    (sum, event) => sum + event.usage.totalTokens,
+    0,
+  );
+  const share = totalTokens > 0 ? sliceTokens / totalTokens : 0;
+  const rollup = rollupTasks(demandView(slice));
+
+  return calculateRoi(
+    roiInput(slice, rollup.successRate, manualMinutes, {
+      totalTokens: sliceTokens,
+      fixedCosts: Object.fromEntries(
+        Object.entries(DEMO_COSTS.fixedCostsFor60DaySample).map(
+          ([key, value]) => [key, value * share],
+        ),
+      ),
+    }),
+  );
+}
+
+function breakdown(
+  metrics: Record<
+    string,
+    { requests: number; activeUsers: number; totalTokens: number; successRate: number }
+  >,
+  classified: readonly ClassifiedEvent[],
+  getKey: (event: ClassifiedEvent) => string | undefined,
+  manualMinutes: (scenarioId: string) => BandValue,
+  totalTokens: number,
+) {
+  return Object.entries(metrics)
+    .sort(([, left], [, right]) => right.requests - left.requests)
+    .map(([name, slice]) => {
+      const events = classified.filter((event) => getKey(event) === name);
+      const rollup = rollupTasks(demandView(events));
+      const sliceRoi = sliceEconomics(events, manualMinutes, totalTokens);
+
+      return {
+        name,
+        requests: slice.requests,
+        tasks: rollup.taskCount,
+        activeUsers: slice.activeUsers,
+        tokens: slice.totalTokens,
+        successRate: rollup.successRate,
+        reworkRate: rollup.reworkRate,
+        realizedValueRub: sliceRoi.base.realizedValue,
+        valueGapRub: sliceRoi.base.valueGap,
+        fteMonthsRealized: sliceRoi.base.fteMonthsRealized,
+        netValueRub: sliceRoi.base.netValue,
+      };
+    });
+}
+
+/**
+ * UNKNOWN requests get the cheapest known scenario, never an average: an
+ * unclassified request must not be able to inflate the business case.
+ */
+function manualMinutesResolver(
+  taxonomy: Taxonomy,
+): (scenarioId: string) => BandValue {
+  const byId = new Map<string, BandValue>();
+  let floor: BandValue = { low: 5, base: 10, high: 15 };
+
+  for (const scenario of taxonomy.scenarios as readonly TaxonomyScenario[]) {
+    if (!scenario.manual_minutes) {
+      continue;
+    }
+    byId.set(scenario.scenario_id, scenario.manual_minutes);
+    if (scenario.manual_minutes.base < floor.base) {
+      floor = scenario.manual_minutes;
+    }
+  }
+
+  return (scenarioId: string) => byId.get(scenarioId) ?? floor;
+}
+
+function intentExtractionDemo(taxonomy: Taxonomy) {
+  const payload = ragPayloadSample as {
+    note: string;
+    request: { messages: { role: string; content: string }[] };
+  };
+  const sourceChars = payload.request.messages.reduce(
+    (sum, message) => sum + message.content.length,
+    0,
+  );
+  const extracted = extractUserIntent(payload.request);
+  const classification = classifyIntent(extracted, taxonomy);
+
+  return {
+    note: payload.note,
+    sourceChars,
+    extractedChars: extracted.length,
+    compressionRatio: extracted.length > 0 ? sourceChars / extracted.length : 0,
+    extracted,
+    routed: classification.isUnknown
+      ? "UNKNOWN: кандидат на LLM-разбор"
+      : `${classification.primary?.scenarioId} (${formatConfidence(classification.confidence)})`,
+  };
+}
+
+function formatConfidence(confidence: number) {
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function bandOf(
+  roi: RoiResult,
+  read: (result: RoiResult["base"]) => number,
+): BandValue {
+  return {
+    low: read(roi.low),
+    base: read(roi.base),
+    high: read(roi.high),
+  };
 }
 
 function predict(event: OperationalEvent, taxonomy: Taxonomy): Prediction {
