@@ -1,49 +1,67 @@
-# Architecture
+# Архитектура
 
-## Constraints
+Фактический контекст и границы реализации описаны в
+[project-context.md](project-context.md).
 
-- The average source prompt may be close to 100k tokens.
-- Vercel Functions accept request/response payloads up to 4.5 MB.
-- The deployed function bundle must stay on the standard lightweight path.
-- The hackathon prototype must work without a database or GPU.
-- The result must be reproducible and explainable to the jury.
-
-## Data flow
+## Текущий checkpoint
 
 ```text
-CSV in browser
-  -> streaming parse
-  -> normalization and exact deduplication
-  -> Intent Capsule extraction
-  -> short embedding batches through /api/embed
-  -> action/domain prototype classification
-  -> low-confidence UNKNOWN bucket
-  -> scenario clustering inside action/domain
-  -> one summary call per cluster
-  -> trends, problems, automation opportunities
-  -> AnalysisResult
-  -> dashboard and Markdown/JSON export
+synthetic operational-log.jsonl
+  → Zod validation
+  → extractUserIntent
+  → lexical taxonomy classifier
+  → scenario либо UNKNOWN
+  → aggregateEvents
+  → calculateRoi
+  → /api/checkpoint
+  → web dashboard
 ```
 
-The browser keeps the full source text. Server routes receive only the minimal
-text needed for an embedding or a cluster summary.
+### Runtime
 
-## MVP boundaries
+- одно приложение Next.js 16;
+- route handler работает в Node.js runtime;
+- данные читаются из локального JSONL;
+- расчёт кэшируется в памяти процесса;
+- браузер получает готовый checkpoint JSON;
+- база данных и отдельные workers отсутствуют.
 
-The MVP is a single Next.js application. It has no persistent multi-user state.
-Analysis state can live in memory or IndexedDB and can be exported. Persistence,
-Vercel Blob, OpenTelemetry ingestion and a corporate AI gateway adapter are
-post-MVP integrations.
+### Основные модули
 
-## Evaluation
+```text
+src/lib/analytics/intent.ts       извлечение intent
+src/lib/analytics/classifier.ts   lexical baseline и UNKNOWN
+src/lib/analytics/aggregate.ts    operational metrics
+src/lib/analytics/roi.ts          proxy-экономика
+src/lib/providers/                OpenAI-compatible клиент
+src/app/api/checkpoint/           сборка результата
+src/app/checkpoint/               dashboard
+```
 
-The synthetic generator keeps hidden expected labels. The analyzer never reads
-them during prediction. The methodology page compares:
+OpenAI-compatible клиент протестирован отдельно, но не участвует в текущем
+checkpoint pipeline.
 
-1. lexical baseline;
-2. embedding prototypes;
-3. embedding prototypes plus UNKNOWN threshold;
-4. full classification and scenario clustering cascade.
+## Целевая архитектура
 
-Report Macro-F1, cluster purity, UNKNOWN rate, LLM calls, elapsed time and input
-token reduction.
+```text
+боевые operational events
+  → нормализация и удаление дубликатов
+  → intent extraction
+  → cache известных intent
+  → lexical + embedding prototype similarity
+  → небольшой классификатор
+  → local LLM fallback для UNKNOWN
+  → clustering неизвестных intent
+  → сценарии, тренды, проблемы и dashboard
+```
+
+Это направление развития, а не описание уже реализованных компонентов.
+
+## Ограничения
+
+- боевой источник данных не подключён;
+- embeddings отсутствуют;
+- ML-классификатор отсутствует;
+- LLM fallback не подключён к checkpoint;
+- автоматический clustering не реализован;
+- состояние не сохраняется между перезапусками процесса.

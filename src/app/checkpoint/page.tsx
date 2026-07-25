@@ -144,10 +144,6 @@ export default function CheckpointPage() {
   const web = data.agents.web_chat;
   const netValue =
     data.economics.realizedValueRub.base - data.economics.tcoRub.total;
-  const costPerSuccess =
-    data.usage.successes > 0
-      ? data.economics.tcoRub.total / data.usage.successes
-      : 0;
   const requestDelta = calculateDelta(
     data.trend[0]?.requests,
     data.trend.at(-1)?.requests,
@@ -199,7 +195,7 @@ export default function CheckpointPage() {
                 type="button"
               >
                 <DownloadIcon />
-                Экспорт PDF
+                Печать / PDF
               </button>
             </div>
           </section>
@@ -236,9 +232,9 @@ export default function CheckpointPage() {
               tone="warning"
             />
             <Kpi
-              label="Затраты на успешный результат"
-              value={formatRubles(costPerSuccess)}
-              note="TCO / success, это не экономия"
+              label="Tool calls"
+              value={formatInteger(data.usage.toolCalls)}
+              note={`${formatInteger(data.usage.toolErrors)} ошибок · ${formatPercent(data.usage.toolErrorRate)}`}
             />
           </section>
 
