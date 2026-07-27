@@ -8,6 +8,8 @@ export interface TaskEvent {
   status?: TaskOutcome;
   repeatOf?: string;
   scenarioIds?: readonly string[];
+  /** Tool calls this attempt made. Summed across the chain. */
+  toolCallCount?: number;
 }
 
 export interface TaskMetrics {
@@ -21,8 +23,17 @@ export interface TaskMetrics {
   attemptsPerTask: number;
 }
 
+export interface RolledTask {
+  scenarioIds: readonly string[];
+  succeeded: boolean;
+  attempts: number;
+  toolCalls: number;
+}
+
 export interface TaskRollup extends TaskMetrics {
   perScenario: Record<string, TaskMetrics>;
+  /** Individual tasks, for callers that need to segment demand further. */
+  tasks: readonly RolledTask[];
 }
 
 const UNKNOWN_SCENARIO = "unknown";
@@ -58,19 +69,18 @@ export function rollupTasks(events: readonly TaskEvent[]): TaskRollup {
       scenarioIds: scenariosOf(root),
       succeeded: outcomeOf(last) === "success",
       attempts: ordered.length,
+      toolCalls: ordered.reduce(
+        (sum, event) => sum + Math.max(0, event.toolCallCount ?? 0),
+        0,
+      ),
     };
   });
 
   return {
     ...measure(tasks),
     perScenario: perScenarioMetrics(tasks),
+    tasks,
   };
-}
-
-interface RolledTask {
-  scenarioIds: readonly string[];
-  succeeded: boolean;
-  attempts: number;
 }
 
 function perScenarioMetrics(

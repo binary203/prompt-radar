@@ -29,6 +29,12 @@ export interface DemandSegment {
   key?: string;
   requestCount: number;
   manualMinutesPerRequest: AdjustableValue;
+  /**
+   * How much of a work session this slice replaced. Defaults to 1. A short
+   * question-and-answer saves a fraction of the scenario's manual time; a long
+   * multi-step session can save more than one pass of it.
+   */
+  sessionLengthFactor?: AdjustableValue;
 }
 
 export interface FixedCosts {
@@ -228,8 +234,9 @@ function calculateBand(
 }
 
 /**
- * Manual minutes before the session-length factor. Segments are summed so an
- * expensive rare scenario keeps its weight; a flat estimate is the fallback.
+ * Manual minutes before the global session-length factor. Segments are summed
+ * so an expensive rare scenario keeps its weight and each slice may carry its
+ * own session-length factor; a flat estimate is the fallback.
  */
 function segmentMinutes(
   input: RoiInput,
@@ -243,7 +250,8 @@ function segmentMinutes(
       (total, segment) =>
         total +
         nonNegative(segment.requestCount) *
-          nonNegative(readBand(segment.manualMinutesPerRequest, band)),
+          nonNegative(readBand(segment.manualMinutesPerRequest, band)) *
+          nonNegative(readBand(segment.sessionLengthFactor ?? 1, band)),
       0,
     );
   }

@@ -71,6 +71,30 @@ describe("calculateRoi segments", () => {
     expect(result.base.effectiveManualMinutes).toBeCloseTo(17.727, 3);
   });
 
+  it("scales a segment by its own session-length factor", () => {
+    const result = calculateRoi({
+      requestCount: 200,
+      segments: [
+        {
+          key: "short",
+          requestCount: 100,
+          manualMinutesPerRequest: 10,
+          sessionLengthFactor: 0.3,
+        },
+        {
+          key: "long",
+          requestCount: 100,
+          manualMinutesPerRequest: 10,
+          sessionLengthFactor: 2,
+        },
+      ],
+      outcome: { successRate: 1, reviewTax: 0, feedbackFactor: 1 },
+    });
+
+    // 100 × 10 × 0.3 + 100 × 10 × 2
+    expect(result.base.potentialMinutes).toBe(2_300);
+  });
+
   it("does not subtract repeats when the caller omits repeatRate", () => {
     const withoutRepeats = calculateRoi({
       requestCount: 100,

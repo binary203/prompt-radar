@@ -47,6 +47,28 @@ describe("rollupTasks", () => {
     expect(rollup.perScenario.unknown.taskCount).toBe(2);
   });
 
+  it("sums tool calls across every attempt of a task", () => {
+    const rollup = rollupTasks([
+      {
+        id: "a",
+        createdAt: "2026-06-01T09:00:00.000Z",
+        outcome: "error",
+        toolCallCount: 2,
+      },
+      {
+        id: "a-retry",
+        createdAt: "2026-06-01T09:05:00.000Z",
+        outcome: "success",
+        repeatOf: "a",
+        toolCallCount: 3,
+      },
+    ]);
+
+    expect(rollup.tasks).toHaveLength(1);
+    expect(rollup.tasks[0].toolCalls).toBe(5);
+    expect(rollup.tasks[0].attempts).toBe(2);
+  });
+
   it("survives a missing parent and a cyclic repeatOf", () => {
     const rollup = rollupTasks([
       {

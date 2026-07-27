@@ -13,6 +13,8 @@ import {
   type ClassificationResult,
   type DemandSegment,
   type RoiResult,
+  type RolledTask,
+  type TaskRollup,
   type Taxonomy,
   type TaxonomyScenario,
 } from "@/lib/analytics";
@@ -42,8 +44,16 @@ type ClassifiedEvent = OperationalEvent & {
   primaryScenarioId: string;
 };
 
+/**
+ * The customer quotes inference at 139 ₽ per million tokens, so a thousand
+ * tokens costs 0.139 ₽. At that price tokens are a rounding error next to
+ * hardware amortization and the team — which is the point the dashboard has to
+ * make, not hide.
+ */
+const TOKEN_COST_PER_MILLION = 139;
+
 const DEMO_COSTS = {
-  tokenCostPerThousand: 4.3,
+  tokenCostPerThousand: TOKEN_COST_PER_MILLION / 1_000,
   fixedCostsFor60DaySample: {
     team: 150_000,
     infrastructure: 75_000,
@@ -51,6 +61,20 @@ const DEMO_COSTS = {
     amortization: 120_000,
   },
 } as const;
+
+/**
+ * The customer scales saved time by how long the replaced work session was:
+ * 0.3 for a short exchange, 1 for a normal one, 2 for a long multi-step
+ * session. Tool calls and retries are the only session-length evidence an
+ * operational log carries, so they decide the bucket.
+ */
+const SESSION_LENGTH_FACTOR = {
+  short: 0.3,
+  medium: 1,
+  long: 2,
+} as const;
+
+type SessionLength = keyof typeof SESSION_LENGTH_FACTOR;
 
 /** Share of agent output a human still has to read and correct. */
 const REVIEW_TAX: BandValue = { low: 0.5, base: 0.3, high: 0.15 };
@@ -188,8 +212,10 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
         },
         reviewTax: REVIEW_TAX,
         feedbackFactor: FEEDBACK_FACTOR,
+        sessionLength: sessionLengthMix(tasks),
         costsFor60DayDemoSampleRub: DEMO_COSTS.fixedCostsFor60DaySample,
         tokenCostPerThousandRub: DEMO_COSTS.tokenCostPerThousand,
+        tokenCostPerMillionRub: TOKEN_COST_PER_MILLION,
       },
       potentialValueRub: bandOf(roi, (result) => result.potentialValue),
       realizedValueRub: bandOf(roi, (result) => result.realizedValue),
@@ -248,7 +274,68 @@ function demandView(events: readonly ClassifiedEvent[]) {
   return events.map((event) => ({
     ...event,
     scenarioIds: [event.primaryScenarioId],
+    toolCallCount: event.toolCalls.length,
   }));
+}
+
+/**
+ * Steps the agent took on behalf of the user: every tool call plus every
+ * reformulation after the first. Thresholds sit at the quantiles of this log —
+ * roughly a third short, half normal, a fifth long — so "long" stays rare
+ * enough to mean something instead of doubling half the estimate.
+ */
+function sessionLengthOf(task: RolledTask): SessionLength {
+  const steps = task.toolCalls + task.attempts - 1;
+
+  if (steps <= 1) {
+    return "short";
+  }
+
+  return steps >= 5 ? "long" : "medium";
+}
+
+/**
+ * Demand split by scenario *and* session length, so a one-line answer and a
+ * ten-step investigation of the same scenario are not priced the same.
+ */
+function demandSegments(
+  rollup: TaskRollup,
+  manualMinutes: (scenarioId: string) => BandValue,
+): DemandSegment[] {
+  const counts = new Map<string, number>();
+
+  for (const task of rollup.tasks) {
+    const scenarioId = task.scenarioIds[0] ?? UNKNOWN_SCENARIO;
+    const key = `${scenarioId}|${sessionLengthOf(task)}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, requestCount]) => {
+      const [scenarioId, length] = key.split("|") as [string, SessionLength];
+
+      return {
+        key,
+        requestCount,
+        manualMinutesPerRequest: manualMinutes(scenarioId),
+        sessionLengthFactor: SESSION_LENGTH_FACTOR[length],
+      };
+    });
+}
+
+function sessionLengthMix(rollup: TaskRollup) {
+  const counts: Record<SessionLength, number> = {
+    short: 0,
+    medium: 0,
+    long: 0,
+  };
+
+  for (const task of rollup.tasks) {
+    counts[sessionLengthOf(task)] += 1;
+  }
+
+  return { counts, factors: SESSION_LENGTH_FACTOR };
 }
 
 function roiInput(
@@ -261,17 +348,10 @@ function roiInput(
   },
 ) {
   const rollup = rollupTasks(demandView(events));
-  const segments: DemandSegment[] = Object.entries(rollup.perScenario).map(
-    ([scenarioId, metrics]) => ({
-      key: scenarioId,
-      requestCount: metrics.taskCount,
-      manualMinutesPerRequest: manualMinutes(scenarioId),
-    }),
-  );
 
   return {
     requestCount: rollup.taskCount,
-    segments,
+    segments: demandSegments(rollup, manualMinutes),
     outcome: {
       successRate: {
         low: Math.max(0, successRate * 0.85),
