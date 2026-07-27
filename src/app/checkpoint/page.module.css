@@ -1370,6 +1370,17 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
+  /* Фиксированные floors колонок (150+120+70+70 + gap = 452px) не помещаются
+     в узкую карточку и распирают документ по горизонтали. На телефоне
+     отпускаем колонки в доли, floors обнуляем через minmax(0, …). */
+  .agentHeader,
+  .agentRow {
+    grid-template-columns:
+      minmax(0, 1.5fr) minmax(0, 1fr)
+      minmax(0, 0.6fr) minmax(0, 0.6fr);
+    gap: 8px;
+  }
+
   .kpi,
   .kpi:nth-child(3) {
     border-right: 1px solid var(--line);
