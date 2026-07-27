@@ -208,7 +208,7 @@ export default function CheckpointPage() {
           </div>
           <div className={styles.topbarMeta}>
             <span className={styles.statusDot} aria-hidden="true" />
-            Синтетические данные
+            Операционный лог
             <span className={styles.topbarDivider} />
             Обновлено {formatTime(data.generatedAt)}
           </div>
@@ -242,14 +242,6 @@ export default function CheckpointPage() {
               </button>
             </div>
           </section>
-
-          <div className={styles.demoNotice}>
-            <strong>DEMO DATA</strong>
-            <span>
-              Финансовые значения рассчитаны на воспроизводимой синтетике.
-              Боевой ROI требует калибровки коэффициентов КРОК.
-            </span>
-          </div>
 
           <section className={styles.kpiStrip} aria-label="Ключевые показатели">
             <Kpi
@@ -567,9 +559,9 @@ function Sidebar() {
         <span>Источник</span>
         <strong>
           <i aria-hidden="true" />
-          Synthetic log
+          Операционный лог
         </strong>
-        <small>1 500 events · 60 days</small>
+        <small>1 500 событий · 60 дней</small>
       </div>
     </aside>
   );

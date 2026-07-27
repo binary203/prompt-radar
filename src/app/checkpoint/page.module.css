@@ -319,29 +319,6 @@
   outline-offset: 2px;
 }
 
-.demoNotice {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  min-height: 38px;
-  margin-bottom: 14px;
-  padding: 8px 12px;
-  border: 1px solid #51452b;
-  border-radius: 6px;
-  background: #1f1c14;
-  color: #c8b687;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.demoNotice strong {
-  flex: 0 0 auto;
-  color: var(--partial);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 8px;
-  letter-spacing: 0.1em;
-}
-
 .kpiStrip {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
