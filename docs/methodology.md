@@ -39,19 +39,27 @@ Realized Value > Total Cost of Ownership
 
 ## Potential, Realized и Value Gap
 
-Для события `i`:
+Единица спроса — задача, а не событие. Пользователь, переформулировавший запрос
+трижды, создал одну единицу работы. Переформулировки сворачиваются в задачу по
+цепочке `repeatOf`: сценарий берётся у первой попытки, результат — у последней.
+
+Для задачи `i`:
 
 ```text
 PotentialMinutesᵢ = ManualMinutes(scenarioᵢ)
 
 OutcomeYieldᵢ =
   SuccessFactorᵢ
-  × (1 - RepeatPenaltyᵢ)
   × (1 - ReviewRateᵢ)
   × FeedbackFactorᵢ
 
 RealizedMinutesᵢ = PotentialMinutesᵢ × OutcomeYieldᵢ
 ```
+
+Отдельного штрафа за повторы в формуле нет намеренно. Повторные попытки уже
+исключены из спроса, а сожжённые ими токены остаются в TCO: переспрос стоит
+денег и не приносит ценности. Множитель `(1 - RepeatPenalty)` поверх этого
+вычитал бы одни и те же повторы дважды.
 
 Для периода:
 
@@ -60,6 +68,11 @@ Potential Value = Σ PotentialMinutes × CostPerEmployeeMinute
 Realized Value  = Σ RealizedMinutes  × CostPerEmployeeMinute
 Value Gap       = Potential Value - Realized Value
 ```
+
+`ManualMinutes` задаётся посценарно в `taxonomy.json` и суммируется по
+сегментам спроса, а не усредняется: редкий дорогой сценарий не должен
+растворяться в частых дешёвых. Нераспознанные запросы получают оценку самого
+дешёвого известного сценария, чтобы UNKNOWN не мог раздувать бизнес-кейс.
 
 `ManualMinutes` и `ReviewRate` являются экспертными предположениями. Они
 задаются диапазонами low/base/high и должны калиброваться на небольшой выборке

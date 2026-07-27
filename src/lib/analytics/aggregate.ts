@@ -11,6 +11,7 @@ export interface AnalyticsEvent {
   createdAt?: string;
   userId?: string;
   department?: string;
+  userRole?: string;
   agentName?: string;
   scenarioIds?: readonly string[];
   status?: AnalyticsEventStatus;
@@ -48,10 +49,14 @@ export interface AggregateMetrics {
 export interface EventAggregation extends AggregateMetrics {
   perAgent: Record<string, AggregateMetrics>;
   perScenario: Record<string, AggregateMetrics>;
+  perDepartment: Record<string, AggregateMetrics>;
+  perRole: Record<string, AggregateMetrics>;
 }
 
 const UNKNOWN_AGENT = "unknown";
 const UNKNOWN_SCENARIO = "unknown";
+const UNKNOWN_DEPARTMENT = "не указан";
+const UNKNOWN_ROLE = "не указана";
 
 export function aggregateEvents(
   events: readonly AnalyticsEvent[],
@@ -69,6 +74,12 @@ export function aggregateEvents(
       );
       return scenarioIds.length > 0 ? scenarioIds : [UNKNOWN_SCENARIO];
     }),
+    perDepartment: aggregateGroups(events, (event) => [
+      normalizeGroup(event.department, UNKNOWN_DEPARTMENT),
+    ]),
+    perRole: aggregateGroups(events, (event) => [
+      normalizeGroup(event.userRole, UNKNOWN_ROLE),
+    ]),
   };
 }
 

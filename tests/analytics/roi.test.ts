@@ -51,3 +51,44 @@ describe("calculateRoi", () => {
     ).toBe(true);
   });
 });
+
+describe("calculateRoi segments", () => {
+  it("weights expensive scenarios instead of averaging them away", () => {
+    const result = calculateRoi({
+      requestCount: 110,
+      segments: [
+        { key: "cheap", requestCount: 100, manualMinutesPerRequest: 10 },
+        { key: "expensive", requestCount: 10, manualMinutesPerRequest: 95 },
+      ],
+      outcome: {
+        successRate: 1,
+        reviewTax: 0,
+        feedbackFactor: 1,
+      },
+    });
+
+    expect(result.base.potentialMinutes).toBe(1_950);
+    expect(result.base.effectiveManualMinutes).toBeCloseTo(17.727, 3);
+  });
+
+  it("does not subtract repeats when the caller omits repeatRate", () => {
+    const withoutRepeats = calculateRoi({
+      requestCount: 100,
+      manualMinutesPerRequest: 10,
+      outcome: { successRate: 0.6, reviewTax: 0, feedbackFactor: 1 },
+    });
+    const withRepeats = calculateRoi({
+      requestCount: 100,
+      manualMinutesPerRequest: 10,
+      outcome: {
+        successRate: 0.6,
+        repeatRate: 0.2,
+        reviewTax: 0,
+        feedbackFactor: 1,
+      },
+    });
+
+    expect(withoutRepeats.base.outcomeYield).toBeCloseTo(0.6, 10);
+    expect(withRepeats.base.outcomeYield).toBeCloseTo(0.48, 10);
+  });
+});

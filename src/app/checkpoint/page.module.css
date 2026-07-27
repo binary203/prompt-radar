@@ -344,7 +344,7 @@
 
 .kpiStrip {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   margin-bottom: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
