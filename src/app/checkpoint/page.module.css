@@ -1085,6 +1085,26 @@
   background: #687065;
 }
 
+/*
+ * Prose inside a table of numbers. It has to wrap and stay left-aligned, which
+ * is the opposite of every other cell in .scenarioTable.
+ */
+.quoteCell {
+  max-width: 340px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+
+.panelFootnote {
+  margin-top: 13px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.6;
+}
+
 .goodSignal,
 .badSignal,
 .neutralSignal {

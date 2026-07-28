@@ -50,6 +50,22 @@ type SegmentMetrics = {
   netValueRub: number;
 };
 
+type PipelineLayer = {
+  id: string;
+  title: string;
+  received: number;
+  resolved: number;
+  costRub: number;
+  note: string;
+};
+
+type DiscoveredUseCase = {
+  size: number;
+  terms: string[];
+  representative: string;
+  cohesion: number;
+};
+
 type CheckpointResponse = {
   generatedAt: string;
   dataset: {
@@ -115,6 +131,37 @@ type CheckpointResponse = {
     actionAccuracy: number;
     domainAccuracy: number;
     predictedUnknownRate: number;
+  };
+  pipeline: {
+    layers: PipelineLayer[];
+    extraction: {
+      sourceChars: number;
+      intentChars: number;
+      compressionRatio: number;
+    };
+    cache: {
+      uniqueIntents: number;
+      hits: number;
+      hitRate: number;
+    };
+    llm: {
+      configured: boolean;
+      model: string | null;
+      calls: number;
+      budget: number;
+      deferred: number;
+      note: string;
+    };
+    costs: {
+      actualRub: number;
+      everythingToLlmRub: number;
+      savedRub: number;
+      perLlmCallRub: number;
+    };
+    unresolved: number;
+  };
+  discovery: {
+    clusters: DiscoveredUseCase[];
   };
   agents: Record<string, AgentMetrics>;
   departments: SegmentMetrics[];
@@ -440,6 +487,97 @@ export default function CheckpointPage() {
             </article>
           </section>
 
+          <section className={styles.scenarios} id="pipeline">
+            <PanelHeader
+              title="Конвейер классификации"
+              subtitle="Пять слоёв, от бесплатного к платному"
+            >
+              <span className={styles.tableHint}>
+                {formatPercent(data.pipeline.cache.hitRate)} снимает кэш ·{" "}
+                {formatRubles(data.pipeline.costs.savedRub)} не ушло в модель
+              </span>
+            </PanelHeader>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.scenarioTable}>
+                <thead>
+                  <tr>
+                    <th>Слой</th>
+                    <th>Вошло</th>
+                    <th>Ответил</th>
+                    <th>Доля входа</th>
+                    <th>Стоимость</th>
+                    <th>Что делает</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.pipeline.layers.map((layer) => (
+                    <LayerRow
+                      key={layer.id}
+                      layer={layer}
+                      total={data.dataset.events}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className={styles.panelFootnote}>
+              До модели дошло{" "}
+              {formatInteger(
+                data.pipeline.layers.find((layer) => layer.id === "llm")
+                  ?.received ?? 0,
+              )}{" "}
+              из {formatInteger(data.dataset.events)} запросов.{" "}
+              {data.pipeline.llm.configured
+                ? `Модель ${data.pipeline.llm.model}, вызовов ${formatInteger(data.pipeline.llm.calls)} по ${formatRubles(data.pipeline.costs.perLlmCallRub)}.`
+                : `Провайдер не подключён: ${formatInteger(data.pipeline.llm.deferred)} намерений остались нераспознанными.`}{" "}
+              Разбор всего потока моделью стоил бы{" "}
+              {formatRubles(data.pipeline.costs.everythingToLlmRub)}.
+            </p>
+          </section>
+
+          {data.discovery.clusters.length > 0 && (
+            <section className={styles.scenarios} id="discovery">
+              <PanelHeader
+                title="Спрос без сценария"
+                subtitle="Кластеры запросов, которым таксономия не даёт названия"
+              >
+                <span className={styles.tableHint}>
+                  {formatInteger(data.pipeline.unresolved)} запросов вне
+                  таксономии
+                </span>
+              </PanelHeader>
+
+              <div className={styles.tableWrap}>
+                <table className={styles.scenarioTable}>
+                  <thead>
+                    <tr>
+                      <th>Группа</th>
+                      <th>Запросов</th>
+                      <th>Плотность</th>
+                      <th>Типичный запрос</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.discovery.clusters.map((cluster) => (
+                      <tr key={cluster.representative}>
+                        <th scope="row">
+                          <strong>{cluster.terms.join(" · ")}</strong>
+                        </th>
+                        <td>{formatInteger(cluster.size)}</td>
+                        <td>{formatPercent(cluster.cohesion)}</td>
+                        <td className={styles.quoteCell}>
+                          {cluster.representative}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <section className={styles.scenarios} id="departments">
             <PanelHeader
               title="Ценность по департаментам"
@@ -537,6 +675,10 @@ function Sidebar() {
         <a className={styles.activeNav} href="#overview">
           <OverviewIcon />
           Обзор
+        </a>
+        <a href="#pipeline">
+          <PipelineIcon />
+          Конвейер
         </a>
         <a href="#scenarios">
           <DemandIcon />
@@ -995,6 +1137,35 @@ function QualityMetric({
   );
 }
 
+function LayerRow({
+  layer,
+  total,
+}: {
+  layer: PipelineLayer;
+  total: number;
+}) {
+  // Extraction transforms rather than resolves, so a share of the funnel would
+  // read as 0 % and imply the layer does nothing.
+  const isTransform = layer.resolved === 0 && layer.id === "extract";
+  const share = layer.received > 0 ? layer.resolved / layer.received : 0;
+
+  return (
+    <tr>
+      <th scope="row">
+        <strong>{layer.title}</strong>
+        <span>
+          <i style={{ width: `${(layer.received / Math.max(1, total)) * 100}%` }} />
+        </span>
+      </th>
+      <td>{formatInteger(layer.received)}</td>
+      <td>{isTransform ? "—" : formatInteger(layer.resolved)}</td>
+      <td>{isTransform ? "—" : formatPercent(share)}</td>
+      <td>{layer.costRub > 0 ? formatRubles(layer.costRub) : "0 ₽"}</td>
+      <td className={styles.quoteCell}>{layer.note}</td>
+    </tr>
+  );
+}
+
 function ScenarioRow({
   scenario,
   maxRequests,
@@ -1107,6 +1278,14 @@ function DemandIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
       <path d="M3 15V9M10 15V4M17 15v-8" />
+    </svg>
+  );
+}
+
+function PipelineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <path d="M2 4h16M4 8h12M6 12h8M8 16h4" />
     </svg>
   );
 }
