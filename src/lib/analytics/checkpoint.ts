@@ -14,9 +14,15 @@ import { extractUserIntent } from "./intent";
 import type { LlmClassifier } from "./llm-classifier";
 import { runPipeline } from "./pipeline";
 import {
+  buildProblemGrid,
+  PROBLEM_COLUMNS,
+  type ProblemScenarioInput,
+} from "./problems";
+import {
   calculateRoi,
   type BandValue,
   type DemandSegment,
+  type RoiBandResult,
   type RoiResult,
 } from "./roi";
 import { rollupTasks, type RolledTask, type TaskRollup } from "./tasks";
@@ -196,6 +202,22 @@ export async function buildCheckpoint(input: CheckpointInput) {
       };
     });
 
+  const slowThresholdMs = percentile(
+    events.map((event) => event.latencyMs),
+    0.95,
+  );
+  const problems = buildProblemGrid(
+    problemInputs(
+      classified,
+      tasks,
+      scenarioById,
+      manualMinutes,
+      aggregation.totalTokens,
+      fixedCosts,
+    ),
+    slowThresholdMs,
+  );
+
   const checkpoint = {
     generatedAt: new Date().toISOString(),
     source: input.sourceLabel ?? "Операционный лог",
@@ -280,6 +302,25 @@ export async function buildCheckpoint(input: CheckpointInput) {
         (result) => result.fteMonthsPotential,
       ),
     },
+    value: {
+      bands: {
+        low: valueOf(roi.low, roi.tco.total),
+        base: valueOf(roi.base, roi.tco.total),
+        high: valueOf(roi.high, roi.tco.total),
+      },
+      tokens: aggregation.totalTokens,
+      tokenCostRub: roi.tco.tokenCost,
+      tokenShareOfTco: safeRate(roi.tco.tokenCost, roi.tco.total),
+      // The decisive comparison: what a minute of freed time costs to buy
+      // versus what a minute of that employee's time costs to pay for.
+      salaryPerMinuteRub: roi.assumptions.rublesPerMinute,
+    },
+    problems: {
+      columns: PROBLEM_COLUMNS,
+      rows: problems,
+      note:
+        "Строки отсортированы по потерянным деньгам. Ячейка с малой выборкой не может требовать действия — только внимания.",
+    },
     evaluation: evaluate(predictions, goldLabels),
     pipeline: {
       layers: pipeline.layers,
@@ -323,6 +364,70 @@ export async function buildCheckpoint(input: CheckpointInput) {
   };
 
   return checkpoint;
+}
+
+/** The same band restated in units a manager plans in: days, people, rubles. */
+function valueOf(band: RoiBandResult, tcoTotal: number) {
+  return {
+    realizedMinutes: band.realizedMinutes,
+    potentialMinutes: band.potentialMinutes,
+    savedHours: band.realizedMinutes / 60,
+    // An eight-hour day, not a 24-hour one.
+    savedWorkdays: band.realizedMinutes / (60 * 8),
+    fteMonths: band.fteMonthsRealized,
+    netValueRub: band.netValue,
+    valueGapRub: band.valueGap,
+    costPerSavedMinuteRub: safeRate(tcoTotal, band.realizedMinutes),
+    profitable: band.profitable,
+  };
+}
+
+/**
+ * One row per scenario that actually carries demand, including UNKNOWN — a pile
+ * of unrecognised requests is itself a thing to fix, not a row to hide.
+ */
+function problemInputs(
+  classified: readonly ClassifiedEvent[],
+  tasks: TaskRollup,
+  scenarioById: ReadonlyMap<string, TaxonomyScenario>,
+  manualMinutes: (scenarioId: string) => BandValue,
+  totalTokens: number,
+  fixedCosts: FixedCostAssumptions,
+): ProblemScenarioInput[] {
+  return Object.entries(tasks.perScenario)
+    .filter(([, metrics]) => metrics.taskCount > 0)
+    .map(([scenarioId, metrics]) => {
+      const slice = classified.filter(
+        (event) => event.primaryScenarioId === scenarioId,
+      );
+      const sliceRoi = sliceEconomics(
+        slice,
+        manualMinutes,
+        totalTokens,
+        fixedCosts,
+      );
+
+      return {
+        key: scenarioId,
+        title:
+          scenarioId === UNKNOWN_SCENARIO
+            ? "Не распознано"
+            : (scenarioById.get(scenarioId)?.title_ru ?? scenarioId),
+        tasks: metrics.taskCount,
+        failedTasks: metrics.taskCount - metrics.succeeded,
+        reworkedTasks: metrics.reworked,
+        valueGapRub: sliceRoi.base.valueGap,
+        events: slice.map((event) => ({
+          scenarioId,
+          toolCalls: event.toolCalls.length,
+          toolErrors: event.toolCalls.filter(
+            (toolCall) => toolCall.status === "error",
+          ).length,
+          feedback: event.feedback,
+          latencyMs: event.latencyMs,
+        })),
+      };
+    });
 }
 
 /**

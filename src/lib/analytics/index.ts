@@ -6,6 +6,7 @@ export * from "./embedding";
 export * from "./intent";
 export * from "./llm-classifier";
 export * from "./pipeline";
+export * from "./problems";
 export * from "./roi";
 export * from "./tasks";
 export * from "./text";

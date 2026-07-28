@@ -1085,6 +1085,178 @@
   background: #687065;
 }
 
+.bandSwitch {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+}
+
+.bandSwitch button {
+  min-height: 26px;
+  padding-inline: 11px;
+  border: 0;
+  border-left: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 8px;
+}
+
+.bandSwitch button:first-child {
+  border-left: 0;
+}
+
+.bandSwitch button:hover {
+  color: var(--text);
+}
+
+.bandActive {
+  background: var(--line-strong);
+  color: var(--text) !important;
+}
+
+.bandRow {
+  cursor: pointer;
+}
+
+.bandRow:hover th,
+.bandRow:hover td {
+  color: var(--text);
+}
+
+.valueHeadline {
+  margin-top: 17px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.valueHeadline strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.valueGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.valueMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 15px 17px;
+  border-left: 1px solid var(--line);
+}
+
+.valueMetric:first-child {
+  border-left: 0;
+}
+
+.valueMetric span {
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.valueMetric strong {
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.valueMetric small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.heatTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.heatTable th,
+.heatTable td {
+  height: 40px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  font-size: 9px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.heatTable th:first-child,
+.heatTable td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.heatTable thead th {
+  height: 31px;
+  border-top: 0;
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.heatTable tbody th {
+  width: 26%;
+  min-width: 210px;
+  font-weight: 500;
+}
+
+.heatTable tbody th > strong {
+  display: block;
+  overflow: hidden;
+  max-width: 300px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Severity carries a border and a weight change as well as a fill: colour alone
+ * would leave the grid unreadable for anyone who cannot separate these hues,
+ * and on a projector the fills are nearly identical anyway.
+ */
+.heatCell {
+  border-left: 1px solid var(--line);
+  text-align: center;
+}
+
+.heatOk {
+  color: var(--muted);
+}
+
+.heatWatch {
+  background: #2a2618;
+  color: #d8c48c;
+}
+
+.heatAct {
+  background: #35211d;
+  color: #e5a08f;
+  font-weight: 600;
+}
+
+.heatWorst {
+  outline: 1px solid currentColor;
+  outline-offset: -3px;
+}
+
 /*
  * Prose inside a table of numbers. It has to wrap and stay left-aligned, which
  * is the opposite of every other cell in .scenarioTable.
@@ -1434,6 +1606,11 @@
   }
 }
 
+/* Only ever visible in the printed report, which has no sidebar or topbar. */
+.printHeader {
+  display: none;
+}
+
 @media print {
   @page {
     size: A4 landscape;
@@ -1449,7 +1626,8 @@
 
   .sidebar,
   .topbar,
-  .actions {
+  .actions,
+  .bandSwitch {
     display: none;
   }
 
@@ -1458,10 +1636,50 @@
     padding: 0;
   }
 
+  .printHeader {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    align-items: baseline;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line-strong);
+  }
+
+  .printHeader strong {
+    font-size: 13px;
+  }
+
+  .printHeader span {
+    color: var(--muted);
+    font-size: 9px;
+  }
+
   .panel,
   .economics,
   .scenarios,
-  .kpiStrip {
+  .kpiStrip,
+  .valueGrid,
+  .tableWrap {
+    break-inside: avoid;
+  }
+
+  /* Two dense grids per page reads better than five squeezed onto one. */
+  .economics,
+  #pipeline {
+    break-before: page;
+  }
+
+  .tableWrap {
+    overflow-x: visible;
+  }
+
+  .scenarioTable,
+  .heatTable {
+    min-width: 0;
+  }
+
+  .footer {
     break-inside: avoid;
   }
 }

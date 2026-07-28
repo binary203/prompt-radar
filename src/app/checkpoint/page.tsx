@@ -59,6 +59,37 @@ type PipelineLayer = {
   note: string;
 };
 
+type Estimate = "low" | "base" | "high";
+
+type ValueBand = {
+  realizedMinutes: number;
+  potentialMinutes: number;
+  savedHours: number;
+  savedWorkdays: number;
+  fteMonths: number;
+  netValueRub: number;
+  valueGapRub: number;
+  costPerSavedMinuteRub: number;
+  profitable: boolean;
+};
+
+type ProblemCell = {
+  key: string;
+  rate: number;
+  numerator: number;
+  denominator: number;
+  severity: "ok" | "watch" | "act";
+};
+
+type ProblemRow = {
+  key: string;
+  title: string;
+  tasks: number;
+  valueGapRub: number;
+  cells: ProblemCell[];
+  worst: string | null;
+};
+
 type DiscoveredUseCase = {
   size: number;
   terms: string[];
@@ -68,6 +99,7 @@ type DiscoveredUseCase = {
 
 type CheckpointResponse = {
   generatedAt: string;
+  source: string;
   dataset: {
     events: number;
     tasks: number;
@@ -124,6 +156,18 @@ type CheckpointResponse = {
     returnPerRuble: NullableBand;
     fteMonthsRealized: Band;
     fteMonthsPotential: Band;
+  };
+  value: {
+    bands: Record<Estimate, ValueBand>;
+    tokens: number;
+    tokenCostRub: number;
+    tokenShareOfTco: number;
+    salaryPerMinuteRub: number;
+  };
+  problems: {
+    columns: Array<{ key: string; title: string; meaning: string }>;
+    rows: ProblemRow[];
+    note: string;
   };
   evaluation: {
     evaluated: number;
@@ -190,11 +234,20 @@ type CheckpointResponse = {
   disclaimer: string;
 };
 
-const bands = ["low", "base", "high"] as const;
+const bands: readonly Estimate[] = ["low", "base", "high"];
+
+const BAND_TITLES: Record<Estimate, string> = {
+  low: "Пессимистичный",
+  base: "Базовый",
+  high: "Оптимистичный",
+};
 
 export default function CheckpointPage() {
   const [data, setData] = useState<CheckpointResponse | null>(null);
   const [error, setError] = useState("");
+  // One control drives every money figure on the page. Showing base only would
+  // hide the fact that the pessimistic case is negative.
+  const [band, setBand] = useState<Estimate>("base");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -226,8 +279,9 @@ export default function CheckpointPage() {
 
   const platform = data.agents.agent_platform;
   const web = data.agents.web_chat;
+  const value = data.value.bands[band];
   const netValue =
-    data.economics.realizedValueRub.base - data.economics.tcoRub.total;
+    data.economics.realizedValueRub[band] - data.economics.tcoRub.total;
   // Cost per successful task, not per successful event: retries of the same
   // task are cost, not extra results.
   const costPerSuccess =
@@ -262,6 +316,16 @@ export default function CheckpointPage() {
         </header>
 
         <main className={styles.main}>
+          {/* Screen shows this in the sidebar and topbar, both hidden in print. */}
+          <div className={styles.printHeader}>
+            <strong>Prompt Radar — отчёт по AI-агентам</strong>
+            <span>
+              {data.source} · {formatPeriod(data.dataset.period)} ·{" "}
+              {data.dataset.periodDays} дней · {BAND_TITLES[band]} сценарий
+            </span>
+            <span>Сформировано {formatTime(data.generatedAt)}</span>
+          </div>
+
           <section className={styles.pageHeader} id="overview">
             <div>
               <p className={styles.eyebrow}>Корпоративные AI-агенты</p>
@@ -326,6 +390,90 @@ export default function CheckpointPage() {
             />
           </section>
 
+          <section className={styles.scenarios} id="value">
+            <PanelHeader
+              title="Что это дало"
+              subtitle={`Подтверждённая польза за период · ${BAND_TITLES[band].toLowerCase()} сценарий`}
+            >
+              <BandSwitch onChange={setBand} value={band} />
+            </PanelHeader>
+
+            <p className={styles.valueHeadline}>
+              Минута высвобожденного времени обходится в{" "}
+              <strong>
+                {formatRublesPrecise(value.costPerSavedMinuteRub)}
+              </strong>{" "}
+              при стоимости минуты сотрудника{" "}
+              <strong>
+                {formatRublesPrecise(data.value.salaryPerMinuteRub)}
+              </strong>
+              .{" "}
+              {value.profitable
+                ? "Покупать это время у агента дешевле, чем оплачивать его людям."
+                : "Пока дороже, чем оплачивать это время людям."}
+            </p>
+
+            <div className={styles.valueGrid}>
+              <ValueMetric
+                label="Высвобождено времени"
+                value={`${formatInteger(value.savedWorkdays)} раб. дней`}
+                note={`${formatInteger(value.savedHours)} часов · ${formatFte(value.fteMonths)}`}
+              />
+              <ValueMetric
+                label="Чистая выгода"
+                value={formatSignedRubles(value.netValueRub)}
+                note={`Realized ${formatRubles(data.economics.realizedValueRub[band])} − TCO ${formatRubles(data.economics.tcoRub.total)}`}
+                tone={value.netValueRub >= 0 ? "positive" : "warning"}
+              />
+              <ValueMetric
+                label="Потрачено токенов"
+                value={formatCompact(data.value.tokens)}
+                note={`${formatRubles(data.value.tokenCostRub)} — ${formatPercent(data.value.tokenShareOfTco)} TCO`}
+              />
+              <ValueMetric
+                label="Не дошло до пользы"
+                value={formatRubles(value.valueGapRub)}
+                note={`${formatInteger(value.potentialMinutes - value.realizedMinutes)} минут потенциала`}
+                tone="warning"
+              />
+            </div>
+          </section>
+
+          <section className={styles.scenarios} id="problems">
+            <PanelHeader
+              title="Что чинить в первую очередь"
+              subtitle="Сценарии сверху вниз по потерянным деньгам"
+            >
+              <span className={styles.tableHint}>
+                Пороги считаются от базовой линии этого лога
+              </span>
+            </PanelHeader>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.heatTable}>
+                <thead>
+                  <tr>
+                    <th>Сценарий</th>
+                    <th>Задачи</th>
+                    <th>Потери</th>
+                    {data.problems.columns.map((column) => (
+                      <th key={column.key} title={column.meaning}>
+                        {column.title}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.problems.rows.slice(0, 10).map((row) => (
+                    <ProblemGridRow key={row.key} row={row} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className={styles.panelFootnote}>{data.problems.note}</p>
+          </section>
+
           <section className={styles.primaryGrid}>
             <article className={styles.panel}>
               <PanelHeader
@@ -368,16 +516,17 @@ export default function CheckpointPage() {
           <section className={styles.economics} id="economics">
             <PanelHeader
               title="Экономика пилота"
-              subtitle="Base case, 60-дневная аллокация TCO"
+              subtitle={`${BAND_TITLES[band]} сценарий · TCO аллоцирован на период лога`}
             >
               <div className={styles.economicSummary}>
                 <span>
-                  ROI <strong>{formatSignedPercent(data.economics.roi.base)}</strong>
+                  ROI{" "}
+                  <strong>{formatSignedPercent(data.economics.roi[band])}</strong>
                 </span>
                 <span>
                   Возврат / 1 ₽{" "}
                   <strong>
-                    {formatRatio(data.economics.returnPerRuble.base)} ₽
+                    {formatRatio(data.economics.returnPerRuble[band])} ₽
                   </strong>
                 </span>
                 <span>
@@ -387,7 +536,7 @@ export default function CheckpointPage() {
             </PanelHeader>
 
             <div className={styles.economicsGrid}>
-              <ValueBreakdown data={data} />
+              <ValueBreakdown band={band} data={data} />
 
               <div className={styles.sensitivity}>
                 <h3>Чувствительность модели</h3>
@@ -400,21 +549,26 @@ export default function CheckpointPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bands.map((band) => (
+                    {bands.map((candidate) => (
                       <tr
-                        className={
-                          band === "base" ? styles.selectedRow : undefined
-                        }
-                        key={band}
+                        aria-current={candidate === band ? "true" : undefined}
+                        className={[
+                          styles.bandRow,
+                          candidate === band ? styles.selectedRow : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        key={candidate}
+                        onClick={() => setBand(candidate)}
                       >
-                        <th scope="row">{band.toUpperCase()}</th>
+                        <th scope="row">{BAND_TITLES[candidate]}</th>
                         <td>
                           {formatRubles(
-                            data.economics.realizedValueRub[band],
+                            data.economics.realizedValueRub[candidate],
                           )}
                         </td>
                         <td>
-                          {formatSignedPercent(data.economics.roi[band])}
+                          {formatSignedPercent(data.economics.roi[candidate])}
                         </td>
                       </tr>
                     ))}
@@ -677,6 +831,14 @@ function Sidebar() {
         <a className={styles.activeNav} href="#overview">
           <OverviewIcon />
           Обзор
+        </a>
+        <a href="#value">
+          <ValueIcon />
+          Польза
+        </a>
+        <a href="#problems">
+          <ProblemsIcon />
+          Что чинить
         </a>
         <a href="#pipeline">
           <PipelineIcon />
@@ -964,8 +1126,14 @@ function OutcomeChart({ data }: { data: CheckpointResponse }) {
   );
 }
 
-function ValueBreakdown({ data }: { data: CheckpointResponse }) {
-  const potential = data.economics.potentialValueRub.base;
+function ValueBreakdown({
+  data,
+  band,
+}: {
+  data: CheckpointResponse;
+  band: Estimate;
+}) {
+  const potential = data.economics.potentialValueRub[band];
   const rows = [
     {
       label: "Potential value",
@@ -974,7 +1142,7 @@ function ValueBreakdown({ data }: { data: CheckpointResponse }) {
     },
     {
       label: "Realized value",
-      value: data.economics.realizedValueRub.base,
+      value: data.economics.realizedValueRub[band],
       className: styles.valueRealized,
     },
     {
@@ -984,7 +1152,7 @@ function ValueBreakdown({ data }: { data: CheckpointResponse }) {
     },
     {
       label: "Value gap",
-      value: data.economics.valueGapRub.base,
+      value: data.economics.valueGapRub[band],
       className: styles.valueGap,
     },
   ];
@@ -1139,6 +1307,106 @@ function QualityMetric({
   );
 }
 
+function BandSwitch({
+  value,
+  onChange,
+}: {
+  value: Estimate;
+  onChange: (next: Estimate) => void;
+}) {
+  return (
+    <div className={styles.bandSwitch} role="group" aria-label="Сценарий оценки">
+      {bands.map((candidate) => (
+        <button
+          aria-pressed={candidate === value}
+          className={candidate === value ? styles.bandActive : undefined}
+          key={candidate}
+          onClick={() => onChange(candidate)}
+          type="button"
+        >
+          {BAND_TITLES[candidate]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ValueMetric({
+  label,
+  value,
+  note,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone?: "default" | "positive" | "warning";
+}) {
+  return (
+    <div className={styles.valueMetric}>
+      <span>{label}</span>
+      <strong
+        className={
+          tone === "positive"
+            ? styles.positiveText
+            : tone === "warning"
+              ? styles.warningText
+              : undefined
+        }
+      >
+        {value}
+      </strong>
+      <small>{note}</small>
+    </div>
+  );
+}
+
+function ProblemGridRow({ row }: { row: ProblemRow }) {
+  return (
+    <tr>
+      <th scope="row">
+        <strong>{row.title}</strong>
+      </th>
+      <td>{formatInteger(row.tasks)}</td>
+      <td className={styles.warningText}>{formatRubles(row.valueGapRub)}</td>
+      {row.cells.map((cell) => (
+        <HeatCell key={cell.key} cell={cell} highlighted={row.worst === cell.key} />
+      ))}
+    </tr>
+  );
+}
+
+function HeatCell({
+  cell,
+  highlighted,
+}: {
+  cell: ProblemCell;
+  highlighted: boolean;
+}) {
+  const severityClass =
+    cell.severity === "act"
+      ? styles.heatAct
+      : cell.severity === "watch"
+        ? styles.heatWatch
+        : styles.heatOk;
+
+  return (
+    <td
+      className={[
+        styles.heatCell,
+        severityClass,
+        highlighted ? styles.heatWorst : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      // Counts belong next to the rate: 100 % of two requests is not a finding.
+      title={`${cell.numerator} из ${cell.denominator}`}
+    >
+      {cell.denominator > 0 ? formatPercent(cell.rate) : "—"}
+    </td>
+  );
+}
+
 function LayerRow({
   layer,
   total,
@@ -1284,6 +1552,26 @@ function DemandIcon() {
   );
 }
 
+function ValueIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 6v8M7.5 8h5M7.5 12h5" />
+    </svg>
+  );
+}
+
+function ProblemsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20">
+      <rect height="5" width="5" x="2" y="2" />
+      <rect height="5" width="5" x="2" y="13" />
+      <rect height="5" width="5" x="13" y="2" />
+      <rect height="5" width="5" x="13" y="13" />
+    </svg>
+  );
+}
+
 function PipelineIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -1355,6 +1643,15 @@ function formatRubles(value: number) {
     currency: "RUB",
     maximumFractionDigits: value >= 1_000_000 ? 2 : 0,
     notation: value >= 1_000_000 ? "compact" : "standard",
+  }).format(value);
+}
+
+/** Kopecks matter when the number is a per-minute rate. */
+function formatRublesPrecise(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
