@@ -33,9 +33,13 @@
 
 | Материал | Ссылка |
 | --- | --- |
-| Видео работы dashboard, MP4 | [artifacts/prompt-radar-demo.mp4](artifacts/prompt-radar-demo.mp4) |
-| PDF с ключевыми метриками | [artifacts/prompt-radar-dashboard.pdf](artifacts/prompt-radar-dashboard.pdf) |
-| Полноразмерный скриншот | [artifacts/prompt-radar-dashboard.png](artifacts/prompt-radar-dashboard.png) |
+| Видео работы dashboard, 43 с | [artifacts/prompt-radar-demo.mp4](artifacts/prompt-radar-demo.mp4) |
+| Отчёт целиком, PDF на 8 страниц | [artifacts/prompt-radar-dashboard.pdf](artifacts/prompt-radar-dashboard.pdf) |
+| Скриншот всей страницы | [artifacts/prompt-radar-dashboard-full.png](artifacts/prompt-radar-dashboard-full.png) |
+
+На видео: переключение пессимистичного и оптимистичного сценария, сетка «что чинить»,
+конвейер классификации, кластеры нераспознанного спроса и загрузка своего лога
+перетаскиванием — дашборд пересчитывается под него на месте.
 
 Живой запуск:
 

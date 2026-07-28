@@ -521,7 +521,7 @@ export default function CheckpointPage() {
               <ValueMetric
                 label="Потрачено токенов"
                 value={formatCompact(data.value.tokens)}
-                note={`${formatRubles(data.value.tokenCostRub)} — ${formatPercent(data.value.tokenShareOfTco)} TCO`}
+                note={`${formatRubles(data.value.tokenCostRub)} — ${formatShare(data.value.tokenShareOfTco)} TCO`}
               />
               <ValueMetric
                 label="Не дошло до пользы"
@@ -1769,6 +1769,17 @@ function formatCompact(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     notation: "compact",
     maximumFractionDigits: 2,
+  }).format(value);
+}
+
+/**
+ * A share can be the whole point and still round to zero: token cost is 0.04 %
+ * of TCO, and "0 %" reads as a missing number rather than as the finding.
+ */
+function formatShare(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "percent",
+    maximumFractionDigits: value > 0 && value < 0.01 ? 2 : 1,
   }).format(value);
 }
 
