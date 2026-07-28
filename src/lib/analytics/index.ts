@@ -1,4 +1,5 @@
 export * from "./aggregate";
+export * from "./checkpoint";
 export * from "./classifier";
 export * from "./clustering";
 export * from "./embedding";

@@ -71,7 +71,7 @@ type CheckpointResponse = {
   dataset: {
     events: number;
     tasks: number;
-    uniqueIntentSeeds: number;
+    uniqueIntents: number;
     periodDays: number;
     activeUsers: number;
     mau: number;
@@ -186,7 +186,7 @@ type CheckpointResponse = {
     compressionRatio: number;
     extracted: string;
     routed: string;
-  };
+  } | null;
   disclaimer: string;
 };
 
@@ -472,18 +472,20 @@ export default function CheckpointPage() {
                   neutral
                 />
               </div>
-              <div className={styles.intentEvidence}>
-                <span>
-                  Из{" "}
-                  {formatInteger(data.intentExtractionDemo.sourceChars)} символов
-                  payload осталось{" "}
-                  {formatInteger(data.intentExtractionDemo.extractedChars)} —
-                  сжатие в{" "}
-                  {Math.round(data.intentExtractionDemo.compressionRatio)} раз
-                </span>
-                <strong>“{data.intentExtractionDemo.extracted}”</strong>
-                <small>→ {data.intentExtractionDemo.routed}</small>
-              </div>
+              {data.intentExtractionDemo && (
+                <div className={styles.intentEvidence}>
+                  <span>
+                    Из{" "}
+                    {formatInteger(data.intentExtractionDemo.sourceChars)}{" "}
+                    символов payload осталось{" "}
+                    {formatInteger(data.intentExtractionDemo.extractedChars)} —
+                    сжатие в{" "}
+                    {Math.round(data.intentExtractionDemo.compressionRatio)} раз
+                  </span>
+                  <strong>“{data.intentExtractionDemo.extracted}”</strong>
+                  <small>→ {data.intentExtractionDemo.routed}</small>
+                </div>
+              )}
             </article>
           </section>
 
