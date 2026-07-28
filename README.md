@@ -424,12 +424,11 @@ artifacts/                видео, PDF и скриншот dashboard
 
 | Документ | О чём |
 | --- | --- |
-| [docs/methodology.md](docs/methodology.md) | методика расчёта и уровни доказательности |
-| [docs/pitch.md](docs/pitch.md) | сценарий защиты и ответы на вопросы |
-| [docs/checkpoint.md](docs/checkpoint.md) | порядок демонстрации |
-| [docs/architecture.md](docs/architecture.md) | архитектура и каскад классификации |
+| [docs/architecture.md](docs/architecture.md) | конвейер классификации и где что выполняется |
+| [docs/methodology.md](docs/methodology.md) | формулы, допущения и уровни доказательности |
 | [docs/dashboard-glossary.md](docs/dashboard-glossary.md) | что означает каждая метрика на экране |
-| [docs/project-context.md](docs/project-context.md) | контекст кейса и требования заказчика |
+| [docs/design-direction.md](docs/design-direction.md) | правила интерфейса |
+| [docs/task-brief.md](docs/task-brief.md) | требования кейса, по которым продукт можно проверить |
 
 ## Ограничения MVP
 
