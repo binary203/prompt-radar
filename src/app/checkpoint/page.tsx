@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import taxonomyData from "@/data/synthetic/taxonomy.json";
+import {
+  buildCheckpoint,
+  createRemoteLlmClassifier,
+  parseOperationalLog,
+  type Taxonomy,
+} from "@/lib/analytics";
+import { DatasetLoader } from "@/components/DatasetLoader";
 
 import styles from "./page.module.css";
 
@@ -243,8 +252,11 @@ const BAND_TITLES: Record<Estimate, string> = {
 };
 
 export default function CheckpointPage() {
-  const [data, setData] = useState<CheckpointResponse | null>(null);
+  const [demo, setDemo] = useState<CheckpointResponse | null>(null);
+  const [uploaded, setUploaded] = useState<CheckpointResponse | null>(null);
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   // One control drives every money figure on the page. Showing base only would
   // hide the fact that the pessimistic case is negative.
   const [band, setBand] = useState<Estimate>("base");
@@ -259,7 +271,7 @@ export default function CheckpointPage() {
         }
         return response.json() as Promise<CheckpointResponse>;
       })
-      .then(setData)
+      .then(setDemo)
       .catch((reason: unknown) => {
         if (reason instanceof Error && reason.name !== "AbortError") {
           setError(reason.message);
@@ -269,16 +281,70 @@ export default function CheckpointPage() {
     return () => controller.abort();
   }, []);
 
+  /**
+   * The uploaded log is analysed here, in the tab, with the same function the
+   * server runs on the demo data. Nothing is uploaded anywhere — the only
+   * request that can leave is the model layer, and it carries an extracted
+   * question rather than the log.
+   */
+  const analyseUpload = useCallback(
+    async (contents: string, fileName: string) => {
+      setBusy(true);
+      setNotice("");
+
+      try {
+        const parsed = parseOperationalLog(contents);
+
+        if (parsed.events.length === 0) {
+          setNotice(
+            parsed.problems.join(" ") || "В файле не нашлось событий.",
+          );
+          return;
+        }
+
+        const checkpoint = await buildCheckpoint({
+          events: parsed.events,
+          taxonomy: taxonomyData as Taxonomy,
+          llm: await createRemoteLlmClassifier(),
+          sourceLabel: fileName,
+        });
+
+        setUploaded(checkpoint as unknown as CheckpointResponse);
+        setNotice(
+          [
+            `Разобрано ${parsed.events.length} из ${parsed.totalLines} записей.`,
+            ...parsed.problems,
+          ].join(" "),
+        );
+      } catch (reason: unknown) {
+        setNotice(
+          reason instanceof Error
+            ? `Расчёт не завершён: ${reason.message}`
+            : "Расчёт не завершён.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
   if (error) {
     return <ErrorState message={error} />;
   }
+
+  const data = uploaded ?? demo;
 
   if (!data) {
     return <LoadingState />;
   }
 
-  const platform = data.agents.agent_platform;
-  const web = data.agents.web_chat;
+  // Channel names come from the log, so an uploaded dataset with its own agent
+  // names renders exactly as well as the demo one.
+  const channels = Object.entries(data.agents)
+    .sort(([, left], [, right]) => right.requests - left.requests)
+    .slice(0, 4)
+    .map(([name, metrics]): [string, AgentMetrics] => [name, metrics]);
   const value = data.value.bands[band];
   const netValue =
     data.economics.realizedValueRub[band] - data.economics.tcoRub.total;
@@ -309,13 +375,19 @@ export default function CheckpointPage() {
           </div>
           <div className={styles.topbarMeta}>
             <span className={styles.statusDot} aria-hidden="true" />
-            Операционный лог
+            {data.source}
             <span className={styles.topbarDivider} />
             Обновлено {formatTime(data.generatedAt)}
           </div>
         </header>
 
         <main className={styles.main}>
+          {notice && (
+            <p className={styles.notice} role="status">
+              {notice}
+            </p>
+          )}
+
           {/* Screen shows this in the sidebar and topbar, both hidden in print. */}
           <div className={styles.printHeader}>
             <strong>Prompt Radar — отчёт по AI-агентам</strong>
@@ -340,9 +412,27 @@ export default function CheckpointPage() {
                 <CalendarIcon />
                 <span>{formatPeriod(data.dataset.period)}</span>
               </div>
-              <Link className={styles.ghostButton} href="/api/checkpoint">
-                JSON
-              </Link>
+              <DatasetLoader
+                busy={busy}
+                onError={setNotice}
+                onFile={analyseUpload}
+              />
+              {uploaded ? (
+                <button
+                  className={styles.ghostButton}
+                  onClick={() => {
+                    setUploaded(null);
+                    setNotice("");
+                  }}
+                  type="button"
+                >
+                  К демо-датасету
+                </button>
+              ) : (
+                <Link className={styles.ghostButton} href="/api/checkpoint">
+                  JSON
+                </Link>
+              )}
               <button
                 className={styles.primaryButton}
                 onClick={() => window.print()}
@@ -594,18 +684,17 @@ export default function CheckpointPage() {
                 title="Сравнение каналов"
                 subtitle="Ресурсоёмкость и качество outcome"
               />
-              <AgentComparison
-                agents={[
-                  ["Web chat", web],
-                  ["Agent platform", platform],
-                ]}
-              />
+              <AgentComparison agents={channels} />
             </article>
 
             <article className={styles.panel} id="quality">
               <PanelHeader
                 title="Качество классификации"
-                subtitle={`${data.evaluation.evaluated} уникальных intent`}
+                subtitle={
+                  data.evaluation.evaluated > 0
+                    ? `${data.evaluation.evaluated} уникальных intent`
+                    : "Нет эталонной разметки для этого датасета"
+                }
               />
               <div className={styles.qualityMetrics}>
                 <QualityMetric
