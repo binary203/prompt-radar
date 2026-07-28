@@ -21,6 +21,20 @@ export const runtime = "nodejs";
 const MAX_INTENTS_PER_REQUEST = 25;
 const MAX_INTENT_LENGTH = 2_000;
 
+/**
+ * Capability probe. A browser has to ask whether a model layer exists before
+ * building a pipeline around it, and asking with a request that 503s writes a
+ * red line into everyone's console on every page load. This answers plainly.
+ */
+export async function GET() {
+  const config = getOpenAiCompatibleConfig();
+
+  return Response.json({
+    configured: Boolean(config),
+    model: config?.chatModel ?? null,
+  });
+}
+
 export async function POST(request: Request) {
   const config = getOpenAiCompatibleConfig();
 

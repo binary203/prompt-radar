@@ -344,7 +344,10 @@ export default function CheckpointPage() {
   const channels = Object.entries(data.agents)
     .sort(([, left], [, right]) => right.requests - left.requests)
     .slice(0, 4)
-    .map(([name, metrics]): [string, AgentMetrics] => [name, metrics]);
+    .map(([name, metrics]): [string, AgentMetrics] => [
+      formatChannelName(name),
+      metrics,
+    ]);
   const value = data.value.bands[band];
   const netValue =
     data.economics.realizedValueRub[band] - data.economics.tcoRub.total;
@@ -506,7 +509,7 @@ export default function CheckpointPage() {
             <div className={styles.valueGrid}>
               <ValueMetric
                 label="Высвобождено времени"
-                value={`${formatInteger(value.savedWorkdays)} раб. дней`}
+                value={`${formatInteger(value.savedWorkdays)} раб. дн.`}
                 note={`${formatInteger(value.savedHours)} часов · ${formatFte(value.fteMonths)}`}
               />
               <ValueMetric
@@ -1747,7 +1750,19 @@ function formatSignedRubles(value: number) {
 }
 
 function formatInteger(value: number) {
-  return new Intl.NumberFormat("ru-RU").format(value);
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(
+    value,
+  );
+}
+
+/**
+ * Channel identifiers come straight from the log, so they arrive as
+ * `agent_platform`. Underscores also make the name one unbreakable word, which
+ * is what widened this column past a phone screen.
+ */
+function formatChannelName(value: string) {
+  const spaced = value.replace(/[_-]+/gu, " ").trim();
+  return spaced.charAt(0).toLocaleUpperCase("ru-RU") + spaced.slice(1);
 }
 
 function formatCompact(value: number) {

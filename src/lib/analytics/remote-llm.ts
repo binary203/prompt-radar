@@ -15,14 +15,14 @@ import type { LlmClassifier } from "./llm-classifier";
 export async function createRemoteLlmClassifier(
   endpoint = "/api/classify",
 ): Promise<LlmClassifier | null> {
-  const probe = await postIntents(endpoint, []);
+  const capability = await probe(endpoint);
 
-  if (!probe) {
+  if (!capability?.configured) {
     return null;
   }
 
   return {
-    model: probe.model,
+    model: capability.model ?? "llm",
     async classify(intent) {
       const response = await postIntents(endpoint, [intent]);
       const classification = response?.results[0]?.classification;
@@ -34,6 +34,17 @@ export async function createRemoteLlmClassifier(
       return classification;
     },
   };
+}
+
+async function probe(
+  endpoint: string,
+): Promise<{ configured: boolean; model: string | null } | null> {
+  try {
+    const response = await fetch(endpoint);
+    return response.ok ? await response.json() : null;
+  } catch {
+    return null;
+  }
 }
 
 interface ClassifyResponse {

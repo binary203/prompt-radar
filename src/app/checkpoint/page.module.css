@@ -404,9 +404,14 @@
 
 .panelHeader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px 20px;
   align-items: flex-start;
+}
+
+.panelHeader > div {
+  min-width: 0;
 }
 
 .panelHeader h2 {
@@ -1491,14 +1496,27 @@
     display: none;
   }
 
+  /*
+   * The rail becomes a strip here, and a strip cannot grow: as sections were
+   * added it pushed the page wider than the screen. It scrolls instead.
+   * min-width: 0 is required — a grid child refuses to shrink without it.
+   */
   .sidebar nav {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 2px;
+    min-width: 0;
     margin: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    display: none;
   }
 
   .sidebar nav a {
+    flex: 0 0 auto;
     min-height: 34px;
     padding-inline: 9px;
   }
@@ -1551,12 +1569,18 @@
     height: 17px;
   }
 
+  /*
+   * A fixed column count breaks the moment a control is added — which is
+   * exactly what happened. Wrapping adapts to however many there are.
+   */
   .actions {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .periodControl {
+    grid-column: 1 / -1;
     min-width: 0;
   }
 
@@ -1578,9 +1602,15 @@
   }
 
   /* A control on a touch screen needs a target, not a caption. */
+  .bandSwitch {
+    width: 100%;
+  }
+
   .bandSwitch button {
+    flex: 1;
     min-height: 40px;
-    padding-inline: 16px;
+    padding-inline: 6px;
+    font-size: 9px;
   }
 
   .kpi,
@@ -1593,9 +1623,13 @@
     border-right: 0;
   }
 
+  /* Six tiles fill three rows of two exactly; spanning the last one leaves a hole. */
   .kpi:last-child {
-    grid-column: 1 / -1;
     border-right: 0;
+    border-bottom: 0;
+  }
+
+  .kpi:nth-last-child(2) {
     border-bottom: 0;
   }
 
@@ -1631,6 +1665,16 @@
 
   .qualityMetrics {
     grid-template-columns: 1fr;
+  }
+
+  /*
+   * The minimum track widths here summed to 452px, wider than a phone, so this
+   * table pushed the whole page sideways. The tracks now shrink.
+   */
+  .agentHeader,
+  .agentRow {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 46px 46px;
+    gap: 8px;
   }
 
   .footer {
