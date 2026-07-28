@@ -8,7 +8,7 @@
   --line-strong: #3b3f38;
   --text: #eceee8;
   --muted: #939990;
-  --faint: #6d726b;
+  --faint: #828880;
   --accent: #a9d56f;
   --accent-soft: #202a18;
   --positive: #8fc875;
@@ -1104,15 +1104,21 @@
 }
 
 .bandSwitch button {
-  min-height: 26px;
-  padding-inline: 11px;
+  min-height: 28px;
+  padding-inline: 12px;
   border: 0;
   border-left: 1px solid var(--line-strong);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font: inherit;
-  font-size: 8px;
+  font-size: 10px;
+  transition: color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.bandSwitch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .bandSwitch button:first-child {
@@ -1126,15 +1132,6 @@
 .bandActive {
   background: var(--line-strong);
   color: var(--text) !important;
-}
-
-.bandRow {
-  cursor: pointer;
-}
-
-.bandRow:hover th,
-.bandRow:hover td {
-  color: var(--text);
 }
 
 .valueHeadline {
@@ -1157,34 +1154,40 @@
   background: var(--surface);
 }
 
+/* Same construction as .kpi: one bordered strip, dividers inside, no cards. */
 .valueMetric {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 15px 17px;
-  border-left: 1px solid var(--line);
+  min-width: 0;
+  padding: 17px 18px 16px;
+  border-right: 1px solid var(--line);
 }
 
-.valueMetric:first-child {
-  border-left: 0;
+.valueMetric:last-child {
+  border-right: 0;
 }
 
 .valueMetric span {
-  color: var(--faint);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 7px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .valueMetric strong {
-  font-size: 19px;
+  display: block;
+  margin-top: 11px;
+  font-size: 24px;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 610;
+  letter-spacing: -0.035em;
+  line-height: 1;
 }
 
 .valueMetric small {
-  color: var(--muted);
+  display: block;
+  margin-top: 9px;
+  color: var(--faint);
   font-size: 9px;
   line-height: 1.45;
 }
@@ -1245,6 +1248,7 @@
  */
 .heatCell {
   border-left: 1px solid var(--line);
+  border-bottom: 2px solid transparent;
   text-align: center;
 }
 
@@ -1253,13 +1257,15 @@
 }
 
 .heatWatch {
-  background: #2a2618;
-  color: #d8c48c;
+  border-bottom-color: var(--partial);
+  background: color-mix(in srgb, var(--partial) 12%, transparent);
+  color: var(--partial);
 }
 
 .heatAct {
-  background: #35211d;
-  color: #e5a08f;
+  border-bottom-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
   font-weight: 600;
 }
 
@@ -1423,6 +1429,18 @@
     border-bottom: 1px solid var(--line);
   }
 
+  .valueGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .valueMetric:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .valueMetric:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
   .primaryGrid,
   .secondaryGrid {
     grid-template-columns: 1fr;
@@ -1542,12 +1560,27 @@
     min-width: 0;
   }
 
-  .demoNotice {
-    align-items: flex-start;
-  }
-
   .kpiStrip {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .valueGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .valueMetric {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .valueMetric:last-child {
+    border-bottom: 0;
+  }
+
+  /* A control on a touch screen needs a target, not a caption. */
+  .bandSwitch button {
+    min-height: 40px;
+    padding-inline: 16px;
   }
 
   .kpi,
@@ -1612,7 +1645,8 @@
 
   .sidebar nav a,
   .ghostButton,
-  .primaryButton {
+  .primaryButton,
+  .bandSwitch button {
     transition: none;
   }
 }

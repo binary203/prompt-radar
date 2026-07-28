@@ -609,6 +609,7 @@ export default function CheckpointPage() {
               subtitle={`${BAND_TITLES[band]} сценарий · TCO аллоцирован на период лога`}
             >
               <div className={styles.economicSummary}>
+                <BandSwitch onChange={setBand} value={band} />
                 <span>
                   ROI{" "}
                   <strong>{formatSignedPercent(data.economics.roi[band])}</strong>
@@ -642,14 +643,10 @@ export default function CheckpointPage() {
                     {bands.map((candidate) => (
                       <tr
                         aria-current={candidate === band ? "true" : undefined}
-                        className={[
-                          styles.bandRow,
-                          candidate === band ? styles.selectedRow : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                        className={
+                          candidate === band ? styles.selectedRow : undefined
+                        }
                         key={candidate}
-                        onClick={() => setBand(candidate)}
                       >
                         <th scope="row">{BAND_TITLES[candidate]}</th>
                         <td>
