@@ -2,6 +2,7 @@ import type {
   ActionTag,
   BusinessDomain,
 } from "../contracts/analysis";
+import { normalizeText, root, tokenize } from "./text";
 
 export interface TaxonomyScenario {
   scenario_id: string;
@@ -47,42 +48,6 @@ interface ScoredScenario {
   domainMatches: string[];
   taxonomyMatches: string[];
 }
-
-const STOP_WORDS = new Set([
-  "без",
-  "был",
-  "быть",
-  "вам",
-  "ваш",
-  "весь",
-  "для",
-  "его",
-  "еще",
-  "или",
-  "как",
-  "какая",
-  "какой",
-  "которые",
-  "мне",
-  "мои",
-  "мой",
-  "надо",
-  "наш",
-  "она",
-  "они",
-  "при",
-  "про",
-  "свой",
-  "так",
-  "там",
-  "что",
-  "это",
-  "the",
-  "and",
-  "for",
-  "from",
-  "with",
-]);
 
 const ACTION_SIGNALS: Record<ActionTag, readonly string[]> = {
   retrieve: ["найд", "покаж", "получ", "список", "поиск", "извлек", "дай"],
@@ -172,7 +137,7 @@ export function classifyIntent(
   taxonomy: Taxonomy | readonly TaxonomyScenario[],
 ): ClassificationResult {
   const scenarios = isTaxonomy(taxonomy) ? taxonomy.scenarios : taxonomy;
-  const normalized = normalize(text);
+  const normalized = normalizeText(text);
 
   if (!normalized || scenarios.length === 0) {
     return unknownResult();
@@ -336,20 +301,6 @@ function deduplicateScores(candidates: readonly ScoredScenario[]) {
       right.rawScore - left.rawScore ||
       left.scenario.scenario_id.localeCompare(right.scenario.scenario_id),
   );
-}
-
-function tokenize(value: string): string[] {
-  return normalize(value)
-    .split(/[^\p{L}\p{N}_]+/u)
-    .filter((token) => token.length >= 3 && !STOP_WORDS.has(token));
-}
-
-function normalize(value: string): string {
-  return value.toLocaleLowerCase("ru-RU").replace(/ё/gu, "е").trim();
-}
-
-function root(token: string): string {
-  return token.length > 7 ? token.slice(0, 7) : token;
 }
 
 function unique<T>(values: readonly T[]): T[] {

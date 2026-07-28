@@ -7,8 +7,10 @@ import {
   aggregateEvents,
   calculateRoi,
   classifyIntent,
+  createLlmClassifier,
   extractUserIntent,
   rollupTasks,
+  runPipeline,
   type BandValue,
   type ClassificationResult,
   type DemandSegment,
@@ -22,6 +24,7 @@ import {
   operationalEventSchema,
   type OperationalEvent,
 } from "@/lib/contracts/operational";
+import { getOpenAiCompatibleConfig } from "@/lib/providers/openai-compatible";
 
 export const runtime = "nodejs";
 
@@ -100,7 +103,26 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
     loadGoldLabels(),
   ]);
   const taxonomy = taxonomyData as Taxonomy;
-  const predictions = events.map((event) => predict(event, taxonomy));
+  const pipeline = await runPipeline(
+    events.map((event) => ({ id: event.id, request: event.request })),
+    {
+      taxonomy,
+      llm: buildLlmClassifier(taxonomy),
+      tokenCostPerMillion: TOKEN_COST_PER_MILLION,
+    },
+  );
+  const decisionById = new Map(
+    pipeline.decisions.map((decision) => [decision.id, decision]),
+  );
+  const predictions: Prediction[] = events.map((event) => {
+    const decision = decisionById.get(event.id);
+
+    return {
+      event,
+      intent: decision?.intent ?? "",
+      classification: decision?.classification ?? classifyIntent("", taxonomy),
+    };
+  });
   const classified: ClassifiedEvent[] = predictions.map(
     ({ event, classification }) => ({
       ...event,
@@ -241,6 +263,21 @@ async function buildCheckpoint(): Promise<Record<string, unknown>> {
       ),
     },
     evaluation: evaluate(predictions, goldLabels),
+    pipeline: {
+      layers: pipeline.layers,
+      extraction: pipeline.extraction,
+      cache: pipeline.cache,
+      llm: pipeline.llm,
+      costs: pipeline.costs,
+      unresolved: pipeline.unresolved,
+      note:
+        "Каждый слой может отказаться отвечать. Запрос доходит до следующего только если предыдущий вернул UNKNOWN.",
+    },
+    discovery: {
+      clusters: pipeline.discovery,
+      note:
+        "Группы запросов, которым таксономия не даёт названия. Кандидаты в новые сценарии.",
+    },
     agents: aggregation.perAgent,
     departments: breakdown(
       aggregation.perDepartment,
@@ -490,13 +527,15 @@ function bandOf(
   };
 }
 
-function predict(event: OperationalEvent, taxonomy: Taxonomy): Prediction {
-  const intent = extractUserIntent(event.request);
-  return {
-    event,
-    intent,
-    classification: classifyIntent(intent, taxonomy),
-  };
+/**
+ * The model layer only exists when the deployment configured a provider. With
+ * no key the pipeline still runs end to end and reports how much traffic would
+ * have reached the model — the number stays honest either way.
+ */
+function buildLlmClassifier(taxonomy: Taxonomy) {
+  const config = getOpenAiCompatibleConfig();
+
+  return config ? createLlmClassifier(taxonomy.scenarios, config) : null;
 }
 
 function evaluate(predictions: Prediction[], goldLabels: GoldLabel[]) {
