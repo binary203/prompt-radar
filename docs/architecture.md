@@ -3,21 +3,77 @@
 Фактический контекст и границы реализации описаны в
 [project-context.md](project-context.md).
 
-## Текущий checkpoint
+## Конвейер классификации
 
 ```text
-synthetic operational-log.jsonl
+operational-log.jsonl
   → Zod validation
-  → extractUserIntent
-  → lexical taxonomy classifier
-  → scenario либо UNKNOWN
-  → aggregateEvents
-  → calculateRoi
-  → /api/checkpoint
-  → web dashboard
+  → 1. extract   извлечение намерения из RAG-обвязки
+  → 2. cache     повтор известного намерения
+  → 3. rules     детерминированное лексическое совпадение
+  → 4. vector    ближайший прототип сценария в эмбеддингах
+  → 5. llm       модель, если ничего дешевле не справилось
+  → rollupTasks → aggregateEvents → calculateRoi
+  → /api/checkpoint → dashboard
 ```
 
-### Runtime
+Слой отвечает или отказывается. Запрос доходит до следующего слоя только если
+предыдущий вернул UNKNOWN, поэтому самый дорогой слой видит малую долю потока.
+
+### Как слои распределяют поток
+
+На синтетическом логе из 1 500 запросов:
+
+| Слой | Вошло | Ответил |
+| --- | ---: | ---: |
+| extract | 1 500 | — |
+| cache | 1 500 | 1 179 |
+| rules | 321 | 254 |
+| vector | 67 | 11 |
+| llm | 56 | 0 (провайдер не подключён) |
+
+Кэш снимает 78,6 % потока просто потому, что 1 500 запросов содержат 321
+уникальное намерение. Это не оптимизация ради красивой цифры — это структура
+корпоративного трафика: люди задают одно и то же.
+
+### Что делает каждый слой
+
+**1. extract** — `src/lib/analytics/intent.ts`. Боевой payload корпоративного
+RAG-шлюза содержит системный промпт, историю и целые документы. Порядок разбора:
+тег `<user_query>` → пользовательский текст вне `<context>` → последнее
+содержательное сообщение `user`. На синтетическом аналоге боевого payload:
+22 262 символа → 58 символов.
+
+**2. cache** — `src/lib/analytics/text.ts`, функция `intentKey`. Ключ — токены
+намерения, приведённые к основе, с сохранением порядка слов. «Клиент по сделке»
+и «сделка по клиенту» — разные вопросы, поэтому порядок значим.
+
+**3. rules** — `src/lib/analytics/classifier.ts`. Чистое сопоставление подстрок:
+`rawScore = actionMatches × 2.1 + domainMatches × 1.7 + taxonomyMatches × 0.75`,
+порог сильного совпадения 3.2. Объяснимо построчно и стоит ноль.
+
+**4. vector** — `src/lib/analytics/embedding.ts` и `vector-classifier.ts`.
+Эмбеддинг строится локально методом feature hashing по основам слов, биграммам
+и символьным триграммам: без новой зависимости, без загрузки модели,
+детерминированно на любой машине. Это лексический эмбеддинг — он ловит
+общность формы, а не смысла. Порог косинуса 0.25 получен измерением точности на
+gold-разметке именно на тех намерениях, которые отвергли правила.
+
+**5. llm** — `src/lib/analytics/llm-classifier.ts`. Промпт закрытый: модель
+выбирает идентификатор из таксономии или отвечает UNKNOWN. Придумывать новую
+категорию она не может — категорию, за которой не стоит сценарий, нельзя
+оценить в деньгах. Слой включается только если сконфигурирован провайдер; ключ
+читается исключительно на сервере. Отказ провайдера оставляет запрос
+нераспознанным и не роняет страницу, а бюджет вызовов ограничивает трату.
+
+### Use-case discovery
+
+`src/lib/analytics/clustering.ts` — сферический k-means по эмбеддингам с
+инициализацией k-means++ и PRNG с фиксированным зерном: один и тот же лог всегда
+даёт одни и те же группы. Кластеризуются запросы, которым не нашлось сценария.
+Сто неопознанных запросов — шум, шесть повторяющихся тем — бэклог.
+
+## Runtime
 
 - одно приложение Next.js 16;
 - route handler работает в Node.js runtime;
@@ -26,42 +82,30 @@ synthetic operational-log.jsonl
 - браузер получает готовый checkpoint JSON;
 - база данных и отдельные workers отсутствуют.
 
-### Основные модули
+## Основные модули
 
 ```text
-src/lib/analytics/intent.ts       извлечение intent
-src/lib/analytics/classifier.ts   lexical baseline и UNKNOWN
-src/lib/analytics/aggregate.ts    operational metrics
-src/lib/analytics/roi.ts          proxy-экономика
-src/lib/providers/                OpenAI-compatible клиент
-src/app/api/checkpoint/           сборка результата
-src/app/checkpoint/               dashboard
+src/lib/analytics/intent.ts             извлечение намерения
+src/lib/analytics/text.ts               нормализация, основы, ключ кэша
+src/lib/analytics/classifier.ts         лексические правила и UNKNOWN
+src/lib/analytics/embedding.ts          локальные эмбеддинги
+src/lib/analytics/vector-classifier.ts  ближайший прототип сценария
+src/lib/analytics/llm-classifier.ts     закрытый промпт к модели
+src/lib/analytics/clustering.ts         k-means для discovery
+src/lib/analytics/pipeline.ts           оркестрация слоёв и телеметрия
+src/lib/analytics/tasks.ts              свёртка переформулировок в задачи
+src/lib/analytics/aggregate.ts          операционные метрики
+src/lib/analytics/roi.ts                экономика
+src/lib/providers/                      OpenAI-compatible клиент
+src/app/api/checkpoint/                 сборка результата
+src/app/checkpoint/                     dashboard
 ```
-
-OpenAI-compatible клиент протестирован отдельно, но не участвует в текущем
-checkpoint pipeline.
-
-## Целевая архитектура
-
-```text
-боевые operational events
-  → нормализация и удаление дубликатов
-  → intent extraction
-  → cache известных intent
-  → lexical + embedding prototype similarity
-  → небольшой классификатор
-  → local LLM fallback для UNKNOWN
-  → clustering неизвестных intent
-  → сценарии, тренды, проблемы и dashboard
-```
-
-Это направление развития, а не описание уже реализованных компонентов.
 
 ## Ограничения
 
-- боевой источник данных не подключён;
-- embeddings отсутствуют;
-- ML-классификатор отсутствует;
-- LLM fallback не подключён к checkpoint;
-- автоматический clustering не реализован;
+- боевой источник данных не подключён, расчёт идёт на синтетике;
+- эмбеддинги лексические: два перефразирования без общих морфем останутся
+  далеко друг от друга, поэтому за векторным слоём и стоит модель;
+- в демонстрационном развёртывании провайдер не сконфигурирован — слой 5 считает
+  объём и стоимость, но запросов не отправляет;
 - состояние не сохраняется между перезапусками процесса.
